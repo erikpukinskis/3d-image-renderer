@@ -44,24 +44,29 @@ export const Renderer: React.FC = () => {
     gl.useProgram(shaderProgram);
     gl.viewport(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
+    // Set the resolution uniform
+    const resolutionLocation = gl.getUniformLocation(
+      shaderProgram,
+      "uResolution"
+    );
+    gl.uniform2f(resolutionLocation, CANVAS_WIDTH, CANVAS_HEIGHT);
+
     // Draw
     var vertexBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, FULL_SCREEN_QUAD, gl.STATIC_DRAW);
+    const positionLocation = gl.getAttribLocation(shaderProgram, "aPosition");
 
     gl.vertexAttribPointer(
-      gl.getAttribLocation(shaderProgram, "vertexData"),
-      3,
+      positionLocation,
+      3, // size (x,y,z)
       gl.FLOAT,
       false,
-      0,
-      0
+      0, // no stride needed, just consecutive vertices
+      0 // no offset needed
     );
 
-    // Enable the vertex attribute array
-    gl.enableVertexAttribArray(
-      gl.getAttribLocation(shaderProgram, "vertexData")
-    );
+    gl.enableVertexAttribArray(positionLocation);
 
     console.log("Drawing screen quad triangles");
     gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -107,12 +112,14 @@ function createShaderProgram(gl: WebGLRenderingContext) {
  */
 function createTriangleShader(gl: WebGLRenderingContext) {
   const FULL_SCREEN_QUAD = `
-        attribute vec4 vertexData;
+    attribute vec4 aPosition; // Vertex data from the buffer
+    varying vec4 vPosition; // Passed to the fragment shader
 
-        void main() {
-            gl_Position = vertexData;
-        }     
-    `;
+    void main() {
+      vPosition = aPosition;
+      gl_Position = aPosition;
+    }     
+  `;
 
   const vertexShader = gl.createShader(gl.VERTEX_SHADER);
 
@@ -131,13 +138,29 @@ function createTriangleShader(gl: WebGLRenderingContext) {
  * Since we're ray casting, the fragment shader is doing the bulk of the work.
  */
 function createFragmentShader(gl: WebGLRenderingContext) {
-  const ALL_GREEN_EVERYTHING = `
-        precision mediump float;
+  const UV_DEMO = `
+    precision mediump float;
+    uniform vec2 uResolution;
+    varying vec4 vPosition;    // Interpolated position for this pixel
+    
+    void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+        // Convert from pixel coordinates to uv
+        vec2 uv = fragCoord/uResolution.xy;
 
-        void main() {
-            gl_FragColor = vec4(0.25,0.2,0.3,1);
-        }
-    `;
+        fragColor = vec4(uv.x, uv.y, 0.0, 1.0);
+    }
+
+    // This is similar boilerplate to what ShaderToy uses
+    void main() {
+        // mainImage writes to this temporary variable
+        vec4 color;
+
+        mainImage(color, gl_FragCoord.xy);
+
+        // gl_FragCoord is a built-in variable that contains the pixel coordinates
+        gl_FragColor = color;
+    }
+  `;
 
   var fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
 
@@ -145,7 +168,7 @@ function createFragmentShader(gl: WebGLRenderingContext) {
     throw new Error("Could not create fragment shader");
   }
 
-  gl.shaderSource(fragmentShader, ALL_GREEN_EVERYTHING);
+  gl.shaderSource(fragmentShader, UV_DEMO);
   gl.compileShader(fragmentShader);
   checkCompileStatus(gl, fragmentShader);
 
