@@ -147,7 +147,32 @@ function createFragmentShader(gl: WebGLRenderingContext) {
         // Convert from pixel coordinates to uv
         vec2 uv = fragCoord/uResolution.xy;
 
-        fragColor = vec4(uv.x, uv.y, 0.0, 1.0);
+        // Convert to normalized device coordinates
+        vec2 ndc = uv * 2.0 - 1.0;
+
+        // (bx^2 + by^2)t^2 + (2(axbx + ayby))t + (ax^2 + ay^2 - r^2) = 0
+        // where
+        // a = ray origin
+        // b = ray direction
+        // r = radius of the sphere
+        // t = hit distance
+
+        vec3 rayDirection = vec3(ndc, -1.0);
+        vec3 rayOrigin = vec3(0.0, 0.0, 2.0);
+        float radius = 1.0;
+
+        // Terms from the quadratic equation:
+        float a = dot(rayDirection, rayDirection);
+        float b = 2.0 * dot(rayOrigin, rayDirection);
+        float c = dot(rayOrigin,rayOrigin) - radius * radius;
+
+        float discriminant = b * b - 4.0 * a * c;
+
+        if (discriminant < 0.0) {
+            fragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        } else {
+            fragColor = vec4(1.0, 0.0, 1.0, 1.0);
+        }
     }
 
     // This is similar boilerplate to what ShaderToy uses
