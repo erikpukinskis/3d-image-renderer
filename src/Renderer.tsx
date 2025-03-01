@@ -51,8 +51,21 @@ export const Renderer: React.FC = () => {
     );
     gl.uniform2f(resolutionLocation, CANVAS_WIDTH, CANVAS_HEIGHT);
 
+    // Set the quad uniforms
+    const p00Location = gl.getUniformLocation(shaderProgram, "uP00");
+    gl.uniform3f(p00Location, -1, -1, -1);
+
+    const p01Location = gl.getUniformLocation(shaderProgram, "uP01");
+    gl.uniform3f(p01Location, -1, 1, -1);
+
+    const p10Location = gl.getUniformLocation(shaderProgram, "uP10");
+    gl.uniform3f(p10Location, 1, -1, -1);
+
+    const p11Location = gl.getUniformLocation(shaderProgram, "uP11");
+    gl.uniform3f(p11Location, 1, 1, -1);
+
     // Draw
-    var vertexBuffer = gl.createBuffer();
+    const vertexBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, FULL_SCREEN_QUAD, gl.STATIC_DRAW);
     const positionLocation = gl.getAttribLocation(shaderProgram, "aPosition");
@@ -86,10 +99,10 @@ function createShaderProgram(gl: WebGLRenderingContext) {
 
   // The vertex shader is what tells the GPU where our verticies are, based on
   // whatever world data we feed it
-  var vertexShader = createShader(gl, gl.VERTEX_SHADER, V_FULL_SCREEN_QUAD);
+  const vertexShader = createShader(gl, gl.VERTEX_SHADER, V_FULL_SCREEN_QUAD);
 
   // The fragment shader renders all of the pixels inside that geometry
-  var fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, F_SPHERE_RAY_CAST);
+  const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, F_QUAD_RAY_CAST);
 
   gl.attachShader(program, vertexShader);
 
@@ -121,43 +134,104 @@ const V_FULL_SCREEN_QUAD = `
 `;
 
 /**
- * Since we're ray casting, the fragment shader is doing the bulk of the work.
+ * Renders a sphere
  */
-const F_SPHERE_RAY_CAST = `
+// const F_SPHERE_RAY_CAST = `
+//   precision mediump float;
+//   uniform vec2 uResolution;
+//   varying vec4 vPosition;    // Interpolated position for this pixel
+
+//   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+//       // Convert from pixel coordinates to uv
+//       vec2 uv = fragCoord/uResolution.xy;
+
+//       // Convert to normalized device coordinates
+//       vec2 ndc = uv * 2.0 - 1.0;
+
+//       // (kx^2 + ky^2)t^2 + (2(vxkx + vyky))t + (vx^2 + vy^2 - r^2) = 0
+//       // where
+//       // v(x,y) = ray origin
+//       // k(x,y) = ray direction
+//       // r = radius of the sphere
+//       // t = hit distance
+
+//       vec3 rayDirection = vec3(ndc, -1.0);
+//       vec3 rayOrigin = vec3(0.0, 0.0, 2.0);
+//       float radius = 1.0;
+
+//       // Terms from the quadratic equation:
+//       float a = dot(rayDirection, rayDirection);
+//       float b = 2.0 * dot(rayOrigin, rayDirection);
+//       float c = dot(rayOrigin,rayOrigin) - radius * radius;
+
+//       float discriminant = b * b - 4.0 * a * c;
+
+//       if (discriminant < 0.0) {
+//           fragColor = vec4(0.0, 0.0, 0.0, 1.0);
+//       } else {
+//           fragColor = vec4(1.0, 0.0, 1.0, 1.0);
+//       }
+//   }
+
+//   // This is similar boilerplate to what ShaderToy uses
+//   void main() {
+//       // mainImage writes to this temporary variable
+//       vec4 color;
+
+//       mainImage(color, gl_FragCoord.xy);
+
+//       // gl_FragCoord is a built-in variable that contains the pixel coordinates
+//       gl_FragColor = color;
+//   }
+// `;
+
+/**
+ * Renders a quad
+ */
+const F_QUAD_RAY_CAST = `
   precision mediump float;
   uniform vec2 uResolution;
-  varying vec4 vPosition;    // Interpolated position for this pixel
-  
+  uniform vec3 uP00;
+  uniform vec3 uP01;
+  uniform vec3 uP10;
+  uniform vec3 uP11;
+
+  // Interpolated position for this pixel
+  varying vec4 vPosition;
+
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+      // Some colors for clarity:
+      vec4 black = vec4(0.0, 0.0, 0.0, 1.0);
+      vec4 magenta = vec4(1.0, 0.0, 1.0, 1.0);
+
       // Convert from pixel coordinates to uv
       vec2 uv = fragCoord/uResolution.xy;
 
       // Convert to normalized device coordinates
       vec2 ndc = uv * 2.0 - 1.0;
 
-      // (kx^2 + ky^2)t^2 + (2(vxkx + vyky))t + (vx^2 + vy^2 - r^2) = 0
-      // where
-      // v(x,y) = ray origin
-      // k(x,y) = ray direction
-      // r = radius of the sphere
-      // t = hit distance
-
+      vec3 anyPointOnPlane = uP00;
+      vec3 rayOrigin = vec3(0.0);
+      // n = (p10​ − p00​) × (p01​ − p00​)
+      vec3 normal = cross(uP10 - uP00, uP01 - uP00);
       vec3 rayDirection = vec3(ndc, -1.0);
-      vec3 rayOrigin = vec3(0.0, 0.0, 2.0);
-      float radius = 1.0;
 
-      // Terms from the quadratic equation:
-      float a = dot(rayDirection, rayDirection);
-      float b = 2.0 * dot(rayOrigin, rayDirection);
-      float c = dot(rayOrigin,rayOrigin) - radius * radius;
+      // Equation for calculating whether the ray intersects the plane:
+      // t = ((a-p0) dot n)/(v dot n)
+      // where
+      // a = point on the plane
+      // p0 = plane origin
+      // n = plane normal
+      // v = ray direction
+      float t = dot(anyPointOnPlane - rayOrigin, normal) / dot(rayDirection, normal);
 
-      float discriminant = b * b - 4.0 * a * c;
-
-      if (discriminant < 0.0) {
-          fragColor = vec4(0.0, 0.0, 0.0, 1.0);
+      if (t < 0.0) {
+        fragColor = black;
       } else {
-          fragColor = vec4(1.0, 0.0, 1.0, 1.0);
+        fragColor = magenta;
       }
+
+      // do a slab test
   }
 
   // This is similar boilerplate to what ShaderToy uses
@@ -177,7 +251,7 @@ function createShader(
   shaderType: number,
   source: string
 ) {
-  var shader = gl.createShader(shaderType);
+  const shader = gl.createShader(shaderType);
 
   if (!shader) {
     throw new Error(`Could not create type ${shaderType}shader`);
