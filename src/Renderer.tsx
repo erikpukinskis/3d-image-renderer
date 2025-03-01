@@ -134,58 +134,6 @@ const V_FULL_SCREEN_QUAD = `
 `;
 
 /**
- * Renders a sphere
- */
-// const F_SPHERE_RAY_CAST = `
-//   precision mediump float;
-//   uniform vec2 uResolution;
-//   varying vec4 vPosition;    // Interpolated position for this pixel
-
-//   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-//       // Convert from pixel coordinates to uv
-//       vec2 uv = fragCoord/uResolution.xy;
-
-//       // Convert to normalized device coordinates
-//       vec2 ndc = uv * 2.0 - 1.0;
-
-//       // (kx^2 + ky^2)t^2 + (2(vxkx + vyky))t + (vx^2 + vy^2 - r^2) = 0
-//       // where
-//       // v(x,y) = ray origin
-//       // k(x,y) = ray direction
-//       // r = radius of the sphere
-//       // t = hit distance
-
-//       vec3 rayDirection = vec3(ndc, -1.0);
-//       vec3 rayOrigin = vec3(0.0, 0.0, 2.0);
-//       float radius = 1.0;
-
-//       // Terms from the quadratic equation:
-//       float a = dot(rayDirection, rayDirection);
-//       float b = 2.0 * dot(rayOrigin, rayDirection);
-//       float c = dot(rayOrigin,rayOrigin) - radius * radius;
-
-//       float discriminant = b * b - 4.0 * a * c;
-
-//       if (discriminant < 0.0) {
-//           fragColor = vec4(0.0, 0.0, 0.0, 1.0);
-//       } else {
-//           fragColor = vec4(1.0, 0.0, 1.0, 1.0);
-//       }
-//   }
-
-//   // This is similar boilerplate to what ShaderToy uses
-//   void main() {
-//       // mainImage writes to this temporary variable
-//       vec4 color;
-
-//       mainImage(color, gl_FragCoord.xy);
-
-//       // gl_FragCoord is a built-in variable that contains the pixel coordinates
-//       gl_FragColor = color;
-//   }
-// `;
-
-/**
  * Renders a quad
  */
 const F_QUAD_RAY_CAST = `
@@ -199,11 +147,52 @@ const F_QUAD_RAY_CAST = `
   // Interpolated position for this pixel
   varying vec4 vPosition;
 
-  void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-      // Some colors for clarity:
-      vec4 black = vec4(0.0, 0.0, 0.0, 1.0);
-      vec4 magenta = vec4(1.0, 0.0, 1.0, 1.0);
+  // Some colors for clarity:
+  vec4 black = vec4(0.0, 0.0, 0.0, 1.0);
+  vec4 magenta = vec4(1.0, 0.0, 1.0, 1.0);
+  
+  void paintPointWithinQuad(out vec4 fragColor, in vec3 pIntersection, in vec3 normal) {
 
+    // Slab Test
+    // —————————
+    // For a point P and a line segment from A to B, you can determine which
+    // side P is on using:
+    //
+    //     orientation = (P - A) · perp(B - A)
+    //
+    // Where perp is the perpendicular vector (in 2D this would be like
+    // turning 90 degrees). This is called an edge test.
+    //
+    //  - If > 0: P is on one side
+    //  - If < 0: P is on the other side
+    //  - If = 0: P is exactly on the line
+    //
+    // So for your quad, you could:
+    //
+    //  1. Take two opposite edges
+    //  2. Check if P is on the correct side of both
+    //  3. Do the same for the other two edges
+    //
+    // If all four tests pass, P is inside the quad.
+
+    // Edge tests
+    // p00->p01
+    float orientationA = dot(pIntersection - uP00, cross(uP01 - uP00, normal));
+    // p10->p11
+    float orientationB = dot(pIntersection - uP10, cross(uP11 - uP10, normal));
+    // p10->p00
+    float orientationC = dot(pIntersection - uP10, cross(uP00 - uP10, normal));
+    // p11->p01
+    float orientationD = dot(pIntersection - uP11, cross(uP01 - uP11, normal));
+
+   if (orientationA < 0.0 || orientationB < 0.0 || orientationC < 0.0 || orientationD < 0.0) {
+      fragColor = black;
+    } else {
+      fragColor = magenta;
+    }
+  }
+    
+  void mainImage(out vec4 fragColor, in vec2 fragCoord) {
       // Convert from pixel coordinates to uv
       vec2 uv = fragCoord/uResolution.xy;
 
@@ -216,25 +205,40 @@ const F_QUAD_RAY_CAST = `
       vec3 normal = cross(uP10 - uP00, uP01 - uP00);
       vec3 rayDirection = vec3(ndc, -1.0);
 
-      // Equation for calculating whether the ray intersects the plane:
-      // t = ((a-p0) dot n)/(v dot n)
-      // where
-      // a = point on the plane
-      // p0 = plane origin
-      // n = plane normal
-      // v = ray direction
-      float t = dot(anyPointOnPlane - rayOrigin, normal) / dot(rayDirection, normal);
+      // Ray-plane intersection test
+      // ———————————————————————————
+      // 
+      // In https://www.youtube.com/watch?v=x_SEyKtCBPU, we derived the equation:
+      //
+      //     t = ((a-p0) dot n)/(v dot n)
+      //
+      //     a = point on the plane
+      //     n = plane normal
+      //     p0 = ray origin
+      //     v = ray direction
+      //
+      // We can then say:
+      //
+      // - If t < 0: v intersects the plane
+      // - If t >= 0: v does not intersect the plane
+      // 
+      // And the point of intersection is:
+      //
+      //      b = tv
+      //
+
+      float denomenator = dot(rayDirection, normal);
+      float t = dot(anyPointOnPlane - rayOrigin, normal) / denomenator;
+      vec3 pIntersection = t * rayDirection;
 
       if (t < 0.0) {
         fragColor = black;
       } else {
-        fragColor = magenta;
+        paintPointWithinQuad(fragColor, pIntersection, normal);
       }
-
-      // do a slab test
   }
 
-  // This is similar boilerplate to what ShaderToy uses
+  // This is similar to ShaderToy's boilerplate:
   void main() {
       // mainImage writes to this temporary variable
       vec4 color;
