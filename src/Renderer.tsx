@@ -150,10 +150,10 @@ function createFragmentShader(gl: WebGLRenderingContext) {
         // Convert to normalized device coordinates
         vec2 ndc = uv * 2.0 - 1.0;
 
-        // (bx^2 + by^2)t^2 + (2(axbx + ayby))t + (ax^2 + ay^2 - r^2) = 0
+        // (kx^2 + ky^2)t^2 + (2(vxkx + vyky))t + (vx^2 + vy^2 - r^2) = 0
         // where
-        // a = ray origin
-        // b = ray direction
+        // v(x,y) = ray origin
+        // k(x,y) = ray direction
         // r = radius of the sphere
         // t = hit distance
 
