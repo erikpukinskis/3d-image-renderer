@@ -86,10 +86,10 @@ function createShaderProgram(gl: WebGLRenderingContext) {
 
   // The vertex shader is what tells the GPU where our verticies are, based on
   // whatever world data we feed it
-  var vertexShader = createTriangleShader(gl);
+  var vertexShader = createShader(gl, gl.VERTEX_SHADER, V_FULL_SCREEN_QUAD);
 
   // The fragment shader renders all of the pixels inside that geometry
-  var fragmentShader = createFragmentShader(gl);
+  var fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, F_SPHERE_RAY_CAST);
 
   gl.attachShader(program, vertexShader);
 
@@ -110,94 +110,84 @@ function createShaderProgram(gl: WebGLRenderingContext) {
  * This is pretty much the simplest possible vertex shader. It just proxies
  * through verticies.
  */
-function createTriangleShader(gl: WebGLRenderingContext) {
-  const FULL_SCREEN_QUAD = `
-    attribute vec4 aPosition; // Vertex data from the buffer
-    varying vec4 vPosition; // Passed to the fragment shader
+const V_FULL_SCREEN_QUAD = `
+  attribute vec4 aPosition; // Vertex data from the buffer
+  varying vec4 vPosition; // Passed to the fragment shader
 
-    void main() {
-      vPosition = aPosition;
-      gl_Position = aPosition;
-    }     
-  `;
-
-  const vertexShader = gl.createShader(gl.VERTEX_SHADER);
-
-  if (!vertexShader) {
-    throw new Error("Could not create vertex shader");
-  }
-
-  gl.shaderSource(vertexShader, FULL_SCREEN_QUAD);
-  gl.compileShader(vertexShader);
-  checkCompileStatus(gl, vertexShader);
-
-  return vertexShader;
-}
+  void main() {
+    vPosition = aPosition;
+    gl_Position = aPosition;
+  }     
+`;
 
 /**
  * Since we're ray casting, the fragment shader is doing the bulk of the work.
  */
-function createFragmentShader(gl: WebGLRenderingContext) {
-  const UV_DEMO = `
-    precision mediump float;
-    uniform vec2 uResolution;
-    varying vec4 vPosition;    // Interpolated position for this pixel
-    
-    void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-        // Convert from pixel coordinates to uv
-        vec2 uv = fragCoord/uResolution.xy;
+const F_SPHERE_RAY_CAST = `
+  precision mediump float;
+  uniform vec2 uResolution;
+  varying vec4 vPosition;    // Interpolated position for this pixel
+  
+  void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+      // Convert from pixel coordinates to uv
+      vec2 uv = fragCoord/uResolution.xy;
 
-        // Convert to normalized device coordinates
-        vec2 ndc = uv * 2.0 - 1.0;
+      // Convert to normalized device coordinates
+      vec2 ndc = uv * 2.0 - 1.0;
 
-        // (kx^2 + ky^2)t^2 + (2(vxkx + vyky))t + (vx^2 + vy^2 - r^2) = 0
-        // where
-        // v(x,y) = ray origin
-        // k(x,y) = ray direction
-        // r = radius of the sphere
-        // t = hit distance
+      // (kx^2 + ky^2)t^2 + (2(vxkx + vyky))t + (vx^2 + vy^2 - r^2) = 0
+      // where
+      // v(x,y) = ray origin
+      // k(x,y) = ray direction
+      // r = radius of the sphere
+      // t = hit distance
 
-        vec3 rayDirection = vec3(ndc, -1.0);
-        vec3 rayOrigin = vec3(0.0, 0.0, 2.0);
-        float radius = 1.0;
+      vec3 rayDirection = vec3(ndc, -1.0);
+      vec3 rayOrigin = vec3(0.0, 0.0, 2.0);
+      float radius = 1.0;
 
-        // Terms from the quadratic equation:
-        float a = dot(rayDirection, rayDirection);
-        float b = 2.0 * dot(rayOrigin, rayDirection);
-        float c = dot(rayOrigin,rayOrigin) - radius * radius;
+      // Terms from the quadratic equation:
+      float a = dot(rayDirection, rayDirection);
+      float b = 2.0 * dot(rayOrigin, rayDirection);
+      float c = dot(rayOrigin,rayOrigin) - radius * radius;
 
-        float discriminant = b * b - 4.0 * a * c;
+      float discriminant = b * b - 4.0 * a * c;
 
-        if (discriminant < 0.0) {
-            fragColor = vec4(0.0, 0.0, 0.0, 1.0);
-        } else {
-            fragColor = vec4(1.0, 0.0, 1.0, 1.0);
-        }
-    }
-
-    // This is similar boilerplate to what ShaderToy uses
-    void main() {
-        // mainImage writes to this temporary variable
-        vec4 color;
-
-        mainImage(color, gl_FragCoord.xy);
-
-        // gl_FragCoord is a built-in variable that contains the pixel coordinates
-        gl_FragColor = color;
-    }
-  `;
-
-  var fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
-
-  if (!fragmentShader) {
-    throw new Error("Could not create fragment shader");
+      if (discriminant < 0.0) {
+          fragColor = vec4(0.0, 0.0, 0.0, 1.0);
+      } else {
+          fragColor = vec4(1.0, 0.0, 1.0, 1.0);
+      }
   }
 
-  gl.shaderSource(fragmentShader, UV_DEMO);
-  gl.compileShader(fragmentShader);
-  checkCompileStatus(gl, fragmentShader);
+  // This is similar boilerplate to what ShaderToy uses
+  void main() {
+      // mainImage writes to this temporary variable
+      vec4 color;
 
-  return fragmentShader;
+      mainImage(color, gl_FragCoord.xy);
+
+      // gl_FragCoord is a built-in variable that contains the pixel coordinates
+      gl_FragColor = color;
+  }
+`;
+
+function createShader(
+  gl: WebGLRenderingContext,
+  shaderType: number,
+  source: string
+) {
+  var shader = gl.createShader(shaderType);
+
+  if (!shader) {
+    throw new Error(`Could not create type ${shaderType}shader`);
+  }
+
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  checkCompileStatus(gl, shader);
+
+  return shader;
 }
 
 function checkCompileStatus(gl: WebGLRenderingContext, shader: WebGLShader) {
