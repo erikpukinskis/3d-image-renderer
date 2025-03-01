@@ -10,7 +10,7 @@ Visit http://localhost:3000/
 ### Todo
 
 - [x] Render a sphere using ray casting
-- [ ] Render a quad
+- [x] Render a quad
 - [ ] Drag to rotate
 - [ ] Sample an image
 - [ ] Sum multiple images

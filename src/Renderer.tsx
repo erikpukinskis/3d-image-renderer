@@ -53,16 +53,16 @@ export const Renderer: React.FC = () => {
 
     // Set the quad uniforms
     const p00Location = gl.getUniformLocation(shaderProgram, "uP00");
-    gl.uniform3f(p00Location, -1, -1, -1);
+    gl.uniform3f(p00Location, -1, -1, -2);
 
     const p01Location = gl.getUniformLocation(shaderProgram, "uP01");
-    gl.uniform3f(p01Location, -1, 1, -1);
+    gl.uniform3f(p01Location, -1, 1, -2);
 
     const p10Location = gl.getUniformLocation(shaderProgram, "uP10");
-    gl.uniform3f(p10Location, 1, -1, -1);
+    gl.uniform3f(p10Location, 1, -1, -2);
 
     const p11Location = gl.getUniformLocation(shaderProgram, "uP11");
-    gl.uniform3f(p11Location, 1, 1, -1);
+    gl.uniform3f(p11Location, 1, 1, -2);
 
     // Draw
     const vertexBuffer = gl.createBuffer();
@@ -175,15 +175,15 @@ const F_QUAD_RAY_CAST = `
     //
     // If all four tests pass, P is inside the quad.
 
-    // Edge tests
+    // Edge tests (Clockwise traversal)
     // p00->p01
     float orientationA = dot(pIntersection - uP00, cross(uP01 - uP00, normal));
-    // p10->p11
-    float orientationB = dot(pIntersection - uP10, cross(uP11 - uP10, normal));
+    // p01->p11
+    float orientationB = dot(pIntersection - uP01, cross(uP11 - uP01, normal));
+    // p11->p10
+    float orientationC = dot(pIntersection - uP11, cross(uP10 - uP11, normal));
     // p10->p00
-    float orientationC = dot(pIntersection - uP10, cross(uP00 - uP10, normal));
-    // p11->p01
-    float orientationD = dot(pIntersection - uP11, cross(uP01 - uP11, normal));
+    float orientationD = dot(pIntersection - uP10, cross(uP00 - uP10, normal));
 
    if (orientationA < 0.0 || orientationB < 0.0 || orientationC < 0.0 || orientationD < 0.0) {
       fragColor = black;
