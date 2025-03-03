@@ -1,3 +1,6 @@
+// Note: using gl-matrix 4.0-beta
+import { Mat4 } from "gl-matrix";
+
 const CANVAS_WIDTH = 300;
 const CANVAS_HEIGHT = 300;
 
@@ -84,7 +87,7 @@ export const Renderer: React.FC = () => {
      *    0  0  1  tz
      *    0  0  0  1
      */
-    const projectionMatrix = [
+    const translationMatrix = new Mat4(
       // x column
       1,
       0,
@@ -104,13 +107,82 @@ export const Renderer: React.FC = () => {
       tx,
       ty,
       tz,
+      1
+    );
+
+    const xRotation = 0;
+    const yRotation = 0;
+
+    /**
+     * Rotation about the y-axis by angle a (radians):
+     * https://en.wikipedia.org/wiki/Rotation_matrix#Basic_3D_rotations
+     *
+     * cos(a)   0   sin(a)
+     *   0      1     0
+     * -sin(a)  0   cos(a)
+     */
+    const yRotationMatrix = new Mat4(
+      // x column
+      Math.cos(yRotation),
+      0,
+      -1 * Math.sin(yRotation),
+      0,
+      // y column
+      0,
       1,
-    ];
+      0,
+      0,
+      // z column
+      Math.sin(yRotation),
+      0,
+      Math.cos(yRotation),
+      0,
+      // w column
+      0,
+      0,
+      0,
+      1
+    );
+
+    /**
+     * Rotation about the y-axis by angle a (radians):
+     * https://en.wikipedia.org/wiki/Rotation_matrix#Basic_3D_rotations
+     *
+     *   1     0       0
+     *   0   cos(a)  -sin(a)
+     *   0   sin(a)   cos(a)
+     */
+    const xRotationMatrix = new Mat4(
+      // x column
+      1,
+      0,
+      0,
+      0,
+      // y column
+      0,
+      Math.cos(xRotation),
+      Math.sin(xRotation),
+      0,
+      // z column
+      0,
+      -1 * Math.sin(xRotation),
+      Math.cos(xRotation),
+      0,
+      // w column
+      0,
+      0,
+      0,
+      1
+    );
 
     const projectionLocation = gl.getUniformLocation(
       shaderProgram,
       "uProjection"
     );
+
+    const projectionMatrix = new Mat4();
+    Mat4.multiply(projectionMatrix, translationMatrix, yRotationMatrix);
+    Mat4.multiply(projectionMatrix, projectionMatrix, xRotationMatrix);
     gl.uniformMatrix4fv(projectionLocation, false, projectionMatrix);
 
     // Draw
