@@ -2,16 +2,19 @@
 
 ```
 yarn install
-yarn start
+yarn start:app:dev
 ```
 
-Visit http://localhost:3000/
+Visit http://localhost:5173/
 
 ### Todo
 
 - [x] Render a sphere using ray casting
 - [x] Render a quad
-- [ ] Drag to rotate
-- [ ] Sample an image
-- [ ] Sum multiple images
-- [ ] Sparse voxel octree
+- [x] Drag to rotate
+- [ ] Move glsl to their own files
+- [ ] Cast into an octave
+- [ ] Cast into an octree
+- [ ] Additive transparency
+- [ ] Shadow
+- [ ] Subsurface scattering
