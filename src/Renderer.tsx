@@ -1,8 +1,15 @@
 // Note: using gl-matrix 4.0-beta
 import { Mat4 } from "gl-matrix";
+import React, { useRef, useState } from "react";
 
 const CANVAS_WIDTH = 300;
 const CANVAS_HEIGHT = 300;
+
+/**
+ * We scale up the Y rotation a little so that you can do a full 180 in a single drag
+ */
+const X_ROTATION_SPEED = 1;
+const Y_ROTATION_SPEED = 3;
 
 const FULL_SCREEN_QUAD = new Float32Array([
   -1.0,
@@ -25,12 +32,40 @@ const FULL_SCREEN_QUAD = new Float32Array([
   0.0, // top right
 ]);
 
+/**
+ * These are world-relative transforms that will apply to the whole world, which
+ * is a little confusing. I am not super clear on what are best practices for
+ * this matrix. Seems like gl-matrix uses a lookAt helper, which makes this
+ * whole question go away. But I would like to understand it deeply.
+ */
+type Camera = {
+  tx: number;
+  ty: number;
+  tz: number;
+  xRotation: number;
+  yRotation: number;
+};
+
 export const Renderer: React.FC = () => {
-  const render = (canvas: HTMLCanvasElement) => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const cameraRef = useRef<Camera>({
+    tx: 0,
+    ty: 0,
+    tz: -2,
+    xRotation: 0,
+    yRotation: 0,
+  });
+
+  const handleMount = (canvas: HTMLCanvasElement | null) => {
+    canvasRef.current = canvas;
+    render();
+  };
+
+  const render = () => {
+    const canvas = canvasRef.current;
+
     if (!canvas) return;
-
-    console.log("Rendering canvas");
-
     // Initialize the GL context
     const gl = canvas.getContext("webgl", {
       antialias: false,
@@ -72,16 +107,12 @@ export const Renderer: React.FC = () => {
 
     // Set the camera uniform(s)
     // ————————————————————————
-    // These are world-relative transforms that will apply to the whole world,
-    // which is a little confusing. I am not super clear on what are best
-    // practices for this matrix. Seems like gl-matrix uses a lookAt helper,
-    // which makes this whole question go away. But I would like to understand
-    // it deeply.
-    const tx = 0;
-    const ty = 0;
-    const tz = -2;
+    const { tx, ty, tz, xRotation, yRotation } = cameraRef.current;
 
     /**
+     * Translation in 3D:
+     * https://www.youtube.com/watch?v=bW9goiYaOBs
+     *
      *    1  0  0  tx
      *    0  1  0  ty
      *    0  0  1  tz
@@ -109,9 +140,6 @@ export const Renderer: React.FC = () => {
       tz,
       1
     );
-
-    const xRotation = 0;
-    const yRotation = 0;
 
     /**
      * Rotation about the y-axis by angle a (radians):
@@ -202,12 +230,79 @@ export const Renderer: React.FC = () => {
 
     gl.enableVertexAttribArray(positionLocation);
 
-    console.log("Drawing screen quad triangles");
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   };
 
+  const [grabbing, setGrabbing] = useState(false);
+
+  const handleMouseDown = (down: React.MouseEvent) => {
+    setGrabbing(true);
+
+    document.body.style.cursor = "grabbing";
+    const xRotationBase = cameraRef.current.xRotation;
+    const yRotationBase = cameraRef.current.yRotation;
+
+    let directionLock: "x" | "y" | undefined = undefined;
+
+    const handleMouseMove = (move: MouseEvent) => {
+      const dx = move.clientX - down.clientX;
+      let dy = move.clientY - down.clientY;
+
+      let yRotation = yRotationBase + (dx * Y_ROTATION_SPEED) / CANVAS_HEIGHT;
+
+      if (Math.abs(yRotation) % (2 * Math.PI) > Math.PI) {
+        dy = -1 * dy;
+      }
+
+      let xRotation = xRotationBase + (dy * X_ROTATION_SPEED) / CANVAS_WIDTH;
+      xRotation = Math.min(Math.PI / 2, xRotation);
+
+      console.log({ yRotation });
+
+      const xDistance = Math.abs(dx);
+      const yDistance = Math.abs(dy);
+
+      if (directionLock === "x") {
+        yRotation = yRotationBase;
+      } else if (directionLock === "y") {
+        xRotation = xRotationBase;
+      } else if (xDistance > 10 && xDistance > yDistance) {
+        directionLock = "y";
+      } else if (yDistance > 10 && yDistance > xDistance) {
+        directionLock = "x";
+      }
+
+      cameraRef.current = {
+        ...cameraRef.current,
+        xRotation,
+        yRotation,
+      };
+
+      render();
+    };
+
+    const handleMouseUp = () => {
+      // Set grabbing to false so the hover cursor on the canvas goes back to grab
+      setGrabbing(false);
+      // Also remove the cursor from the body which applies when we drag off the canvas
+      document.body.style.removeProperty("cursor");
+
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  };
+
   return (
-    <canvas ref={render} width={CANVAS_WIDTH} height={CANVAS_HEIGHT}></canvas>
+    <canvas
+      ref={handleMount}
+      width={CANVAS_WIDTH}
+      height={CANVAS_HEIGHT}
+      onMouseDown={handleMouseDown}
+      style={{ cursor: grabbing ? "grabbing" : "grab" }}
+    ></canvas>
   );
 };
 
