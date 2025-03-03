@@ -11,6 +11,11 @@ const CANVAS_HEIGHT = 300;
 const X_ROTATION_SPEED = 1;
 const Y_ROTATION_SPEED = 3;
 
+/**
+ * Camera definition
+ */
+const CAMERA_DISTANCE = -6;
+const CAMERA_FOV = 0.2;
 const FULL_SCREEN_QUAD = new Float32Array([
   -1.0,
   -1.0,
@@ -52,7 +57,7 @@ export const Renderer: React.FC = () => {
   const cameraRef = useRef<Camera>({
     tx: 0,
     ty: 0,
-    tz: -2,
+    tz: CAMERA_DISTANCE,
     xRotation: 0,
     yRotation: 0,
   });
@@ -364,7 +369,8 @@ const F_QUAD_RAY_CAST = `
   // Some colors for clarity:
   vec4 black = vec4(0.0, 0.0, 0.0, 1.0);
   vec4 magenta = vec4(1.0, 0.0, 1.0, 1.0);
-  
+  float fov = ${CAMERA_FOV};
+
   void paintPointWithinQuad(out vec4 fragColor, in vec3 pIntersection, in vec3 normal, in vec3 p00, in vec3 p01, in vec3 p10, in vec3 p11) {
 
     // Slab Test
@@ -411,7 +417,7 @@ const F_QUAD_RAY_CAST = `
       vec2 uv = fragCoord/uResolution.xy;
 
       // Convert to normalized device coordinates
-      vec2 ndc = uv * 2.0 - 1.0;
+      vec2 ndc = (uv * 2.0 - 1.0) * fov;
 
       // Convert the quad uniform to a homogeneous matrix
       vec4 hQuad[4];
