@@ -17,7 +17,7 @@ Visit http://localhost:5173/
 - [x] Render a sphere using ray casting
 - [x] Render a quad
 - [x] Drag to rotate
-- [ ] Move glsl to their own files
+- [x] Move glsl to their own files
 - [ ] Cast into an octave
 - [ ] Cast into an octree
 - [ ] Additive transparency
