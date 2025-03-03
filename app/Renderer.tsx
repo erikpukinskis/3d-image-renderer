@@ -2,7 +2,7 @@
 import { Mat4 } from "gl-matrix"
 import React, { useRef, useState } from "react"
 import V_FULL_SCREEN_QUAD from "./shaders/V_FULL_SCREEN_QUAD.glsl?raw"
-import F_QUAD_RAY_CAST from "./shaders/F_QUAD_RAY_CAST.glsl?raw"
+import F_OCTANT_RAY_CAST from "./shaders/F_OCTREE_RAY_CAST.glsl?raw"
 
 const CANVAS_WIDTH = 300
 const CANVAS_HEIGHT = 300
@@ -266,8 +266,6 @@ export const Renderer: React.FC = () => {
       let xRotation = xRotationBase + (dy * X_ROTATION_SPEED) / CANVAS_WIDTH
       xRotation = Math.min(Math.PI / 2, xRotation)
 
-      console.log({ yRotation })
-
       const xDistance = Math.abs(dx)
       const yDistance = Math.abs(dy)
 
@@ -327,7 +325,7 @@ function createShaderProgram(gl: WebGLRenderingContext) {
   const vertexShader = createShader(gl, gl.VERTEX_SHADER, V_FULL_SCREEN_QUAD)
 
   // The fragment shader renders all of the pixels inside that geometry
-  const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, F_QUAD_RAY_CAST)
+  const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, F_OCTANT_RAY_CAST)
 
   gl.attachShader(program, vertexShader)
 
