@@ -1,6 +1,11 @@
 ### Usage
 
+Ensure you have [nvm](https://github.com/nvm-sh/nvm) and
+[Yarn](https://yarnpkg.com/getting-started/install) installed.
+
 ```
+nvm install
+nvm use
 yarn install
 yarn start:app:dev
 ```
