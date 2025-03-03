@@ -52,17 +52,66 @@ export const Renderer: React.FC = () => {
     gl.uniform2f(resolutionLocation, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     // Set the quad uniforms
-    const p00Location = gl.getUniformLocation(shaderProgram, "uP00");
-    gl.uniform3f(p00Location, -1, -1, -2);
+    const quadLocation = gl.getUniformLocation(shaderProgram, "uQuad");
+    gl.uniform3fv(
+      quadLocation,
+      [
+        // p00
+        -1, -1, 0,
+        // p01
+        -1, 1, 0,
+        // p10,
+        1, -1, 0,
+        // p11
+        1, 1, 0,
+      ]
+    );
 
-    const p01Location = gl.getUniformLocation(shaderProgram, "uP01");
-    gl.uniform3f(p01Location, -1, 1, -2);
+    // Set the camera uniform(s)
+    // ————————————————————————
+    // These are world-relative transforms that will apply to the whole world,
+    // which is a little confusing. I am not super clear on what are best
+    // practices for this matrix. Seems like gl-matrix uses a lookAt helper,
+    // which makes this whole question go away. But I would like to understand
+    // it deeply.
+    const tx = 0;
+    const ty = 0;
+    const tz = -2;
 
-    const p10Location = gl.getUniformLocation(shaderProgram, "uP10");
-    gl.uniform3f(p10Location, 1, -1, -2);
+    /**
+     *    1  0  0  tx
+     *    0  1  0  ty
+     *    0  0  1  tz
+     *    0  0  0  1
+     */
+    const projectionMatrix = [
+      // x column
+      1,
+      0,
+      0,
+      0,
+      // y column
+      0,
+      1,
+      0,
+      0,
+      // z column
+      0,
+      0,
+      1,
+      0,
+      // w column
+      tx,
+      ty,
+      tz,
+      1,
+    ];
 
-    const p11Location = gl.getUniformLocation(shaderProgram, "uP11");
-    gl.uniform3f(p11Location, 1, 1, -2);
+    const projectionLocation = gl.getUniformLocation(
+      shaderProgram,
+      "uProjection"
+    );
+    gl.uniformMatrix4fv(projectionLocation, false, projectionMatrix);
 
     // Draw
     const vertexBuffer = gl.createBuffer();
@@ -139,10 +188,8 @@ const V_FULL_SCREEN_QUAD = `
 const F_QUAD_RAY_CAST = `
   precision mediump float;
   uniform vec2 uResolution;
-  uniform vec3 uP00;
-  uniform vec3 uP01;
-  uniform vec3 uP10;
-  uniform vec3 uP11;
+  uniform vec3 uQuad[4];
+  uniform mat4 uProjection;
 
   // Interpolated position for this pixel
   varying vec4 vPosition;
@@ -151,7 +198,7 @@ const F_QUAD_RAY_CAST = `
   vec4 black = vec4(0.0, 0.0, 0.0, 1.0);
   vec4 magenta = vec4(1.0, 0.0, 1.0, 1.0);
   
-  void paintPointWithinQuad(out vec4 fragColor, in vec3 pIntersection, in vec3 normal) {
+  void paintPointWithinQuad(out vec4 fragColor, in vec3 pIntersection, in vec3 normal, in vec3 p00, in vec3 p01, in vec3 p10, in vec3 p11) {
 
     // Slab Test
     // —————————
@@ -177,13 +224,13 @@ const F_QUAD_RAY_CAST = `
 
     // Edge tests (Clockwise traversal)
     // p00->p01
-    float orientationA = dot(pIntersection - uP00, cross(uP01 - uP00, normal));
+    float orientationA = dot(pIntersection - p00, cross(p01 - p00, normal));
     // p01->p11
-    float orientationB = dot(pIntersection - uP01, cross(uP11 - uP01, normal));
+    float orientationB = dot(pIntersection - p01, cross(p11 - p01, normal));
     // p11->p10
-    float orientationC = dot(pIntersection - uP11, cross(uP10 - uP11, normal));
+    float orientationC = dot(pIntersection - p11, cross(p10 - p11, normal));
     // p10->p00
-    float orientationD = dot(pIntersection - uP10, cross(uP00 - uP10, normal));
+    float orientationD = dot(pIntersection - p10, cross(p00 - p10, normal));
 
    if (orientationA < 0.0 || orientationB < 0.0 || orientationC < 0.0 || orientationD < 0.0) {
       fragColor = black;
@@ -199,10 +246,30 @@ const F_QUAD_RAY_CAST = `
       // Convert to normalized device coordinates
       vec2 ndc = uv * 2.0 - 1.0;
 
-      vec3 anyPointOnPlane = uP00;
+      // Convert the quad uniform to a homogeneous matrix
+      vec4 hQuad[4];
+      hQuad[0] = vec4(uQuad[0], 1);
+      hQuad[1] = vec4(uQuad[1], 1);
+      hQuad[2] = vec4(uQuad[2], 1);
+      hQuad[3] = vec4(uQuad[3], 1);
+
+      // Then apply the camera projection to the homogenous quad. This should
+      // multiply each vec4 in the hQuad by the uProjection.
+      vec4 pQuad[4];
+      pQuad[0] = uProjection * hQuad[0];
+      pQuad[1] = uProjection * hQuad[1];
+      pQuad[2] = uProjection * hQuad[2];
+      pQuad[3] = uProjection * hQuad[3];
+
+      vec3 p00 = pQuad[0].xyz / pQuad[0].w;
+      vec3 p01 = pQuad[1].xyz / pQuad[1].w;
+      vec3 p10 = pQuad[2].xyz / pQuad[2].w;
+      vec3 p11 = pQuad[3].xyz / pQuad[3].w;
+
+      vec3 anyPointOnPlane = p00;
       vec3 rayOrigin = vec3(0.0);
       // n = (p10​ − p00​) × (p01​ − p00​)
-      vec3 normal = cross(uP10 - uP00, uP01 - uP00);
+      vec3 normal = cross(p10 - p00, p01 - p00);
       vec3 rayDirection = vec3(ndc, -1.0);
 
       // Ray-plane intersection test
@@ -234,7 +301,7 @@ const F_QUAD_RAY_CAST = `
       if (t < 0.0) {
         fragColor = black;
       } else {
-        paintPointWithinQuad(fragColor, pIntersection, normal);
+        paintPointWithinQuad(fragColor, pIntersection, normal, p00, p01, p10, p11);
       }
   }
 
