@@ -55,7 +55,7 @@ Notes:
 - On typical hardware GL_MAX_FRAGMENT_UNIFORM_VECTORS is 256, and we can pack 16
   8-bit voxels into each vector. So a grid size of 8-12 should be feasible.
 
-## Octree Storage
+## Octree Representation
 
 The 512x512x512x8 bit image is roughly 134 million voxels, in the worst case
 scenario that's ~150 megabytes. However we wouldn't store all of that in a

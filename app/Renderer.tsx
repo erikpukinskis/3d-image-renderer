@@ -1,5 +1,5 @@
 // Note: using gl-matrix 4.0-beta
-import { Mat4 } from "gl-matrix"
+import { Mat4, Vec3 } from "gl-matrix"
 import React, { useRef, useState } from "react"
 import V_FULL_SCREEN_QUAD from "./shaders/V_FULL_SCREEN_QUAD.glsl?raw"
 import F_OCTANT_RAY_CAST from "./shaders/F_OCTREE_RAY_CAST.glsl?raw"
@@ -38,6 +38,80 @@ const FULL_SCREEN_QUAD = new Float32Array([
   1.0,
   0.0, // top right
 ])
+
+/**
+ * This is an octree which has the bottom 1024 squares of an 32x32x32 volume as
+ * fully opaque. With 8x8x8 chunks, we should be able to render this in two
+ * passes.
+ *
+ * See /README.md#Octree_Representation
+ *
+ * In each pass, we are both rendering a slice at a certain depth, and
+ * generating a depth map that will allow us to efficiently build the slice
+ * behind this one.
+ *
+ * Each pass will render up to 64 (8x8) slices, and each slice will be rendered
+ * from a 512 (8x8x8) voxel volume. So this 32x32x32 bottom plane image, we'll
+ * only need two passes.
+ *
+ * I believe that means we'll need a ray marching algorithm on the CPU as well
+ * as the GPU. The one on the CPU will walk the octree and generate those 8x8x8
+ * voxel volumes. The one on the CPU will a visible projection of those volumes.
+ * The GPU may also render the depth buffer to be used by the CPU for the next
+ * round of resolution. Although I'm not sure if data can flow in that
+ * direction.
+ */
+const BOTTOM_PLANE_OCTREE = [
+  // Depth 0: 4 voxels to a slice
+  256, // i = 0, The 8-15 octant
+  256, // i = 1, The 8-15 octant
+  256, // i = 2, The 8-15 octant
+  256, // i = 3, The 8-15 octant
+  0, // i = 4, 0% opaque
+  0, // i = 5, 0% opaque
+  0, // i = 6, 0% opaque
+  0, // i = 7, 0% opaque
+
+  // Depth 1: 16 voxels to a slice
+  264, // i = 8, The 16-23 octant
+  264, // i = 9, The 16-23 octant
+  264, // i = 10, The 16-23 octant
+  264, // i = 11, The 16-23 octant
+  0, // i = 12, 0% opaque
+  0, // i = 13, 0% opaque
+  0, // i = 14, 0% opaque
+  0, // i = 15, 0% opaque
+
+  // Depth 2: 64 voxels to a slice
+  272, // i = 16, The 24-31 octant
+  272, // i = 17, The 24-31 octant
+  272, // i = 18, The 24-31 octant
+  272, // i = 19, The 24-31 octant
+  0, // i = 20, 0% opaque
+  0, // i = 21, 0% opaque
+  0, // i = 22, 0% opaque
+  0, // i = 23, 0% opaque
+
+  // Depth 3: 256 voxels to a slice
+  280, // i = 24, The 32-39 octant
+  280, // i = 25, The 32-39 octant
+  280, // i = 26, The 32-39 octant
+  280, // i = 27, The 32-39 octant
+  0, // i = 28, 0% opaque
+  0, // i = 29, 0% opaque
+  0, // i = 30, 0% opaque
+  0, // i = 31, 0% opaque
+
+  // Depth 4 (leaf nodes): 1024 voxels to a slice
+  255, // i = 32, 100% opaque
+  255, // i = 33, 100% opaque
+  255, // i = 34, 100% opaque
+  255, // i = 35, 100% opaque
+  0, // i = 36, 0% opaque
+  0, // i = 37, 0% opaque
+  0, // i = 38, 0% opaque
+  0, // i = 39, 0% opaque
+]
 
 /**
  * These are world-relative transforms that will apply to the whole world, which
@@ -221,6 +295,68 @@ export const Renderer: React.FC = () => {
     Mat4.multiply(projectionMatrix, translationMatrix, yRotationMatrix)
     Mat4.multiply(projectionMatrix, projectionMatrix, xRotationMatrix)
     gl.uniformMatrix4fv(projectionLocation, false, projectionMatrix)
+
+    /**
+     * The slice to be constructed is an 8x8x8 screen space projection of the
+     * octree, containing 8-bit unsigned integers representing the color at that
+     * voxel.
+     *
+     * The projection is always 8x8x8 even if it extends outside the image
+     * volume, since we just fill in empty space with 0's.
+     *
+     * The voxels in a slice will be labeled 000 -> 888, where voxel "123" has
+     * x=1, y=2, z=3
+     */
+    const slice: number[][][] = [
+      [[], [], [], [], [], [], [], []],
+      [[], [], [], [], [], [], [], []],
+      [[], [], [], [], [], [], [], []],
+      [[], [], [], [], [], [], [], []],
+      [[], [], [], [], [], [], [], []],
+      [[], [], [], [], [], [], [], []],
+      [[], [], [], [], [], [], [], []],
+      [[], [], [], [], [], [], [], []],
+    ]
+
+    /**
+     * Let me walk through what we are going to do.
+     *
+     * A slice is parameterized as:
+     *  - slice origin: an arbitrary (non-grid-aligned) point in
+     *  - ray direction: a vector indicating which way the camera is pointed
+     *  - depth: which level of the octree we are rendering
+     *
+     * When rendering a scene, we start with a slice origin offscreen to the
+     * left of the camera. When rendering the whole tree (not zoomed in) we
+     * start at a depth of 2. At that depth, the octree has 8x8x8 voxels.
+     *
+     * We use a plane perpendicular to the camera—the "camera
+     * plane"—intersecting the slice origin, and use that to locate the nearest
+     * voxel in the octree. That is voxel 000.
+     *
+     * We will move through each xy combination, and determine 8 voxels along
+     * the (camera's) z-axis. This group of 8 voxels is called a "core".
+     *
+     * Then to find voxel 001 we move the camera plane back one step. When we're
+     * looking square on to the voxels, this step size will be exactly 1.0. But
+     * when we're looking at a 45 degree angle, it will be sqrt(2). And any
+     * other angle in between. We call this value zStep. Using this number
+     * guarantees that we never put the same voxel in the slice twice.
+     *
+     * After we step the camera plane back, we find the next nearest voxel, and
+     * put it in 001.
+     *
+     * Once we have stored all of the voxels up to 008, that's the first core.
+     * We move on to the core starting at 010. We return the z-plane back to the
+     * slice origin, and move the y-plane over by the yStep, which is calculated
+     * the same way as the zStep.
+     */
+
+    for (let screenX = 0; screenX < 8; screenX++) {
+      for (let screenY = 0; screenY < 8; screenY++) {
+        for (let screenZ = 0; screenZ < 8; screenZ++) {}
+      }
+    }
 
     // Draw
     const vertexBuffer = gl.createBuffer()
