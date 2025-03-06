@@ -1,8 +1,9 @@
 // Note: using gl-matrix 4.0-beta
-import { Mat4, Vec3 } from "gl-matrix"
+import { Mat4, vec3, Vec3 } from "gl-matrix"
 import React, { useRef, useState } from "react"
 import V_FULL_SCREEN_QUAD from "./shaders/V_FULL_SCREEN_QUAD.glsl?raw"
 import F_OCTANT_RAY_CAST from "./shaders/F_OCTREE_RAY_CAST.glsl?raw"
+import { sampleSlice } from "./sampleSlice"
 
 const CANVAS_WIDTH = 300
 const CANVAS_HEIGHT = 300
@@ -296,67 +297,12 @@ export const Renderer: React.FC = () => {
     Mat4.multiply(projectionMatrix, projectionMatrix, xRotationMatrix)
     gl.uniformMatrix4fv(projectionLocation, false, projectionMatrix)
 
-    /**
-     * The slice to be constructed is an 8x8x8 screen space projection of the
-     * octree, containing 8-bit unsigned integers representing the color at that
-     * voxel.
-     *
-     * The projection is always 8x8x8 even if it extends outside the image
-     * volume, since we just fill in empty space with 0's.
-     *
-     * The voxels in a slice will be labeled 000 -> 888, where voxel "123" has
-     * x=1, y=2, z=3
-     */
-    const slice: number[][][] = [
-      [[], [], [], [], [], [], [], []],
-      [[], [], [], [], [], [], [], []],
-      [[], [], [], [], [], [], [], []],
-      [[], [], [], [], [], [], [], []],
-      [[], [], [], [], [], [], [], []],
-      [[], [], [], [], [], [], [], []],
-      [[], [], [], [], [], [], [], []],
-      [[], [], [], [], [], [], [], []],
-    ]
-
-    /**
-     * Let me walk through what we are going to do.
-     *
-     * A slice is parameterized as:
-     *  - slice origin: an arbitrary (non-grid-aligned) point in
-     *  - ray direction: a vector indicating which way the camera is pointed
-     *  - depth: which level of the octree we are rendering
-     *
-     * When rendering a scene, we start with a slice origin offscreen to the
-     * left of the camera. When rendering the whole tree (not zoomed in) we
-     * start at a depth of 2. At that depth, the octree has 8x8x8 voxels.
-     *
-     * We use a plane perpendicular to the camera—the "camera
-     * plane"—intersecting the slice origin, and use that to locate the nearest
-     * voxel in the octree. That is voxel 000.
-     *
-     * We will move through each xy combination, and determine 8 voxels along
-     * the (camera's) z-axis. This group of 8 voxels is called a "core".
-     *
-     * Then to find voxel 001 we move the camera plane back one step. When we're
-     * looking square on to the voxels, this step size will be exactly 1.0. But
-     * when we're looking at a 45 degree angle, it will be sqrt(2). And any
-     * other angle in between. We call this value zStep. Using this number
-     * guarantees that we never put the same voxel in the slice twice.
-     *
-     * After we step the camera plane back, we find the next nearest voxel, and
-     * put it in 001.
-     *
-     * Once we have stored all of the voxels up to 008, that's the first core.
-     * We move on to the core starting at 010. We return the z-plane back to the
-     * slice origin, and move the y-plane over by the yStep, which is calculated
-     * the same way as the zStep.
-     */
-
-    for (let screenX = 0; screenX < 8; screenX++) {
-      for (let screenY = 0; screenY < 8; screenY++) {
-        for (let screenZ = 0; screenZ < 8; screenZ++) {}
-      }
-    }
+    const slice = sampleSlice({
+      origin: new Vec3(-1, -1, 0),
+      depth: 0,
+      rayDirection: new Vec3(0, 0, -1),
+      octree: BOTTOM_PLANE_OCTREE,
+    })
 
     // Draw
     const vertexBuffer = gl.createBuffer()
