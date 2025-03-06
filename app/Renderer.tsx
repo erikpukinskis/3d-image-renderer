@@ -2,7 +2,7 @@
 import { Mat4, vec3, Vec3 } from "gl-matrix"
 import React, { useRef, useState } from "react"
 import V_FULL_SCREEN_QUAD from "./shaders/V_FULL_SCREEN_QUAD.glsl?raw"
-import F_OCTANT_RAY_CAST from "./shaders/F_OCTREE_RAY_CAST.glsl?raw"
+import F_CAST_OCTREE_SLICE from "./shaders/F_CAST_OCTREE_SLICE.glsl?raw"
 import { sampleSlice } from "./sampleSlice"
 
 const CANVAS_WIDTH = 300
@@ -149,7 +149,7 @@ export const Renderer: React.FC = () => {
 
     if (!canvas) return
     // Initialize the GL context
-    const gl = canvas.getContext("webgl", {
+    const gl = canvas.getContext("webgl2", {
       antialias: false,
     })
 
@@ -157,36 +157,37 @@ export const Renderer: React.FC = () => {
       throw new Error("Could not get WebGL context")
     }
 
-    const shaderProgram = createShaderProgram(gl)
+    const program = createShaderProgram(gl)
 
     // useProgram is similar to bindBuffer, since we can only have one program
     // going at a time we need to tell OpenGL which is up.
-    gl.useProgram(shaderProgram)
+    gl.useProgram(program)
     gl.viewport(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
 
     // Set the camera resolution and FOV uniforms
-    const resolutionLocation = gl.getUniformLocation(
-      shaderProgram,
-      "uResolution"
+    gl.uniform2f(
+      gl.getUniformLocation(program, "uResolution"),
+      CANVAS_WIDTH,
+      CANVAS_HEIGHT
     )
-    gl.uniform2f(resolutionLocation, CANVAS_WIDTH, CANVAS_HEIGHT)
-    const fovLocation = gl.getUniformLocation(shaderProgram, "uFOV")
-    gl.uniform1f(fovLocation, CAMERA_FOV)
+    gl.uniform1f(gl.getUniformLocation(program, "uFOV"), CAMERA_FOV)
 
-    // Set the quad uniforms
-    const quadLocation = gl.getUniformLocation(shaderProgram, "uQuad")
-    gl.uniform3fv(
-      quadLocation,
-      [
-        // p00
-        -1, -1, 0,
-        // p01
-        -1, 1, 0,
-        // p10,
-        1, -1, 0,
-        // p11
-        1, 1, 0,
-      ]
+    // Set the slice uniforms
+    const sliceOrigin = new Vec3(-1, -1, 0)
+    gl.uniform1iv(
+      gl.getUniformLocation(program, "uSlice"),
+      sampleSlice({
+        origin: sliceOrigin,
+        depth: 0,
+        rayDirection: new Vec3(0, 0, -1), // FIXME: This should be the camera's direction
+        octree: BOTTOM_PLANE_OCTREE,
+      })
+    )
+    gl.uniform3f(
+      gl.getUniformLocation(program, "uSliceOrigin"),
+      sliceOrigin.x,
+      sliceOrigin.y,
+      sliceOrigin.z
     )
 
     // Set the camera uniform(s)
@@ -287,28 +288,18 @@ export const Renderer: React.FC = () => {
       1
     )
 
-    const projectionLocation = gl.getUniformLocation(
-      shaderProgram,
-      "uProjection"
-    )
+    const projectionLocation = gl.getUniformLocation(program, "uProjection")
 
     const projectionMatrix = new Mat4()
     Mat4.multiply(projectionMatrix, translationMatrix, yRotationMatrix)
     Mat4.multiply(projectionMatrix, projectionMatrix, xRotationMatrix)
     gl.uniformMatrix4fv(projectionLocation, false, projectionMatrix)
 
-    const slice = sampleSlice({
-      origin: new Vec3(-1, -1, 0),
-      depth: 0,
-      rayDirection: new Vec3(0, 0, -1),
-      octree: BOTTOM_PLANE_OCTREE,
-    })
-
     // Draw
     const vertexBuffer = gl.createBuffer()
     gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer)
     gl.bufferData(gl.ARRAY_BUFFER, FULL_SCREEN_QUAD, gl.STATIC_DRAW)
-    const positionLocation = gl.getAttribLocation(shaderProgram, "aPosition")
+    const positionLocation = gl.getAttribLocation(program, "aPosition")
 
     gl.vertexAttribPointer(
       positionLocation,
@@ -404,14 +395,16 @@ function createShaderProgram(gl: WebGLRenderingContext) {
 
   // The vertex shader is what tells the GPU where our verticies are, based on
   // whatever world data we feed it
-  const vertexShader = createShader(gl, gl.VERTEX_SHADER, V_FULL_SCREEN_QUAD)
+  gl.attachShader(
+    program,
+    createShader(gl, gl.VERTEX_SHADER, V_FULL_SCREEN_QUAD)
+  )
 
   // The fragment shader renders all of the pixels inside that geometry
-  const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, F_OCTANT_RAY_CAST)
-
-  gl.attachShader(program, vertexShader)
-
-  gl.attachShader(program, fragmentShader)
+  gl.attachShader(
+    program,
+    createShader(gl, gl.FRAGMENT_SHADER, F_CAST_OCTREE_SLICE)
+  )
 
   // The program has to be "linked" before it can be "used". There's not a lot
   // of documentation out there, but it seems to be another kind of compile step

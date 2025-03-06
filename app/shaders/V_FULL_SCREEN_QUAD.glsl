@@ -1,8 +1,9 @@
+#version 300 es
 // This is pretty much the simplest possible vertex shader. It just proxies
 // through verticies.
 
-attribute vec4 aPosition; // Vertex data from the buffer
-varying vec4 vPosition; // Passed to the fragment shader
+in vec4 aPosition; // Vertex data from the buffer 
+out vec4 vPosition; // Passed to the fragment shader
 
 void main() {
   vPosition = aPosition;

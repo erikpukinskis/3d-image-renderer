@@ -1,3 +1,4 @@
+#version 300 es
 precision mediump float;
 uniform vec2 uResolution;
 uniform vec3 uQuad[4];
@@ -5,7 +6,10 @@ uniform mat4 uProjection;
 uniform float uFOV;
 
 // Interpolated position for this pixel
-varying vec4 vPosition;
+in vec4 vPosition;
+
+// Output color
+out vec4 fragColor;
 
 // Some colors for clarity:
 vec4 black = vec4(0.0, 0.0, 0.0, 1.0);
@@ -64,7 +68,7 @@ void paintPointWithinQuad(
   }
 }
 
-void mainImage(out vec4 fragColor, vec2 fragCoord) {
+void mainImage(out vec4 outColor, vec2 fragCoord) {
   // Convert from pixel coordinates to uv
   vec2 uv = fragCoord / uResolution.xy;
 
@@ -124,9 +128,9 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
   vec3 pIntersection = t * rayDirection;
 
   if (t < 0.0) {
-    fragColor = black;
+    outColor = black;
   } else {
-    paintPointWithinQuad(fragColor, pIntersection, normal, p00, p01, p10, p11);
+    paintPointWithinQuad(outColor, pIntersection, normal, p00, p01, p10, p11);
   }
 }
 
@@ -137,6 +141,6 @@ void main() {
 
   mainImage(color, gl_FragCoord.xy);
 
-  // gl_FragCoord is a built-in variable that contains the pixel coordinates
-  gl_FragColor = color;
+  // Write to output variable instead of gl_FragColor
+  fragColor = color;
 }

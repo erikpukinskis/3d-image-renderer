@@ -48,7 +48,7 @@ export function sampleSlice({
   rayDirection,
   depth,
   octree,
-}: SampleSliceArgs) {
+}: SampleSliceArgs): Int32Array {
   /**
    * The slice to be constructed is an 8x8x8 screen space projection of the
    * octree, containing 8-bit unsigned integers representing the color at that
@@ -60,16 +60,7 @@ export function sampleSlice({
    * The voxels in a slice will be labeled 000 -> 888, where voxel "123" has
    * x=1, y=2, z=3
    */
-  const slice: number[][][] = [
-    [[], [], [], [], [], [], [], []],
-    [[], [], [], [], [], [], [], []],
-    [[], [], [], [], [], [], [], []],
-    [[], [], [], [], [], [], [], []],
-    [[], [], [], [], [], [], [], []],
-    [[], [], [], [], [], [], [], []],
-    [[], [], [], [], [], [], [], []],
-    [[], [], [], [], [], [], [], []],
-  ]
+  const slice = new Int32Array(512)
 
   /**
    * The steps determine how we move through world space space, such that the
@@ -97,11 +88,16 @@ export function sampleSlice({
       for (let z = 0; z < 8; z++) {
         voxelOrigin.z = origin.z + z * zStep
 
-        // Find and store the voxel
-        slice[x][y][z] = findNearestVoxel(octree, voxelOrigin, depth)
+        // Find and store the voxel. Shift the y value 3 bits to the right,
+        // enough space for an 8. Shift the z value by 6, enough space for two
+        // 8s.
+        const nodeIndex = x + (y << 3) + (z << 6)
+        slice[nodeIndex] = findNearestVoxel(octree, voxelOrigin, depth)
       }
     }
   }
+
+  return slice
 }
 
 /**
