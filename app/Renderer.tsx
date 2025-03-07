@@ -177,7 +177,7 @@ export const Renderer: React.FC = () => {
     gl.uniform1iv(
       gl.getUniformLocation(program, "uSlice"),
       sampleSlice({
-        origin: sliceOrigin,
+        sliceOrigin: sliceOrigin,
         depth: 0,
         rayDirection: new Vec3(0, 0, -1), // FIXME: This should be the camera's direction
         octree: BOTTOM_PLANE_OCTREE,
