@@ -1,7 +1,7 @@
 import { Vec3 } from "gl-matrix"
 
 type SampleSliceArgs = {
-  origin: Vec3
+  sliceOrigin: Vec3
   rayDirection: Vec3
   depth: number
   octree: number[]
@@ -44,7 +44,7 @@ type SampleSliceArgs = {
  * way as the zStep.
  */
 export function sampleSlice({
-  origin,
+  sliceOrigin,
   rayDirection,
   depth,
   octree,
@@ -74,25 +74,25 @@ export function sampleSlice({
    * A point in world space, which the voxel we are putting in the slice is
    * the nearest voxel to.
    */
-  const voxelOrigin = Vec3.clone(origin)
+  const nodeOrigin = Vec3.clone(sliceOrigin)
 
   // We will iterate through 64 camera-aligned "cores" through the octree by
   // looping over x and y in pseudo-screens-space:
   for (let x = 0; x < 8; x++) {
     for (let y = 0; y < 8; y++) {
       // Calculate the origin of this core:
-      voxelOrigin.x = origin.x + x * xStep
-      voxelOrigin.y = origin.y + y * yStep
+      nodeOrigin.x = sliceOrigin.x + x * xStep
+      nodeOrigin.y = sliceOrigin.y + y * yStep
 
       // Now we step down through the (camera's) z-axis:
       for (let z = 0; z < 8; z++) {
-        voxelOrigin.z = origin.z + z * zStep
+        nodeOrigin.z = sliceOrigin.z + z * zStep
 
         // Find and store the voxel. Shift the y value 3 bits to the right,
         // enough space for an 8. Shift the z value by 6, enough space for two
         // 8s.
         const nodeIndex = x + (y << 3) + (z << 6)
-        slice[nodeIndex] = findNearestVoxel(octree, voxelOrigin, depth)
+        slice[nodeIndex] = sampleColor(octree, nodeOrigin, depth)
       }
     }
   }
@@ -127,7 +127,7 @@ export function sampleSlice({
  * of 255. We can also confirm it's a leaf node because  know that because if we
  * extract the index, we get 0.
  */
-function findNearestVoxel(
+function sampleColor(
   octree: Octree,
   samplePoint: Vec3,
   targetDepth: number

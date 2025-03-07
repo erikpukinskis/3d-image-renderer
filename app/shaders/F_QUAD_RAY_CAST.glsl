@@ -136,11 +136,7 @@ void mainImage(out vec4 outColor, vec2 fragCoord) {
 
 // This is similar to ShaderToy's boilerplate:
 void main() {
-  // mainImage writes to this temporary variable
   vec4 color;
-
   mainImage(color, gl_FragCoord.xy);
-
-  // Write to output variable instead of gl_FragColor
   fragColor = color;
 }
