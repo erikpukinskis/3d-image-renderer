@@ -24,6 +24,9 @@ void mainImage(out vec4 outColor, vec2 fragCoord) {
   // Convert to normalized device coordinates
   vec2 ndc = (uv * 2.0 - 1.0) * uFOV;
 
+  vec3 rayDirection = vec3(ndc, -1.0);
+
+
   // Alright. So, here we are rendering a slice. The slice is 512 levels of
   // opacity 0 (transparent) to 255 (opaque). They are arranged in a 3 dimensional
   // (x,y,z) volume stored as an array of uint32. The volume is camera aligned.
@@ -49,14 +52,31 @@ void mainImage(out vec4 outColor, vec2 fragCoord) {
   //      )
 
   // The first step, however is to figure out which "core" of the slice we are
-  // looking down. This involves doing the opposite of the above, and solving
-  // for values of x, y, and z which intersect the ray.
+  // looking down.
+
+  int x = 0;
+  int y = 0;
+
+  // TODO: get the correct values of x and y
+
+
+  voxelOrigin = uSliceOrigin insersect rayDirection
+
+
 
   // Once we have the core, we simply march through the 8 voxels, and return the
   // value of whichever one we find.
 
-  // It's so tempting to ask Cursor to take a stab at implementing this for me
-  // 😆 but I am going to force myself to give it a go first.
+  for (int z = 0; z < 8; z++) {
+    // See the documentation in Slice.ts for details on how this index is
+    // calculated.
+    int voxelIndex = x | (y << 3) | (z << 6);
+
+    if (uSlice[voxelIndex] > 0) {
+      outColor = magenta;
+      break;
+    }
+  }
 
   outColor = black;
 }

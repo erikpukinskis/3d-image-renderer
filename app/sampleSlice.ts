@@ -1,4 +1,6 @@
 import { Vec3 } from "gl-matrix"
+import { Slice } from "./Slice"
+import { Octree } from "./Octree"
 
 type SampleSliceArgs = {
   sliceOrigin: Vec3
@@ -8,23 +10,14 @@ type SampleSliceArgs = {
 }
 
 /**
+ * Samples a screen-oriented 3D slice of voxels at a certain depth and location
+ * in an octree.
+ *
  * @param origin - The origin of the slice in world space
  * @param rayDirection - The direction of the ray in world space
  * @param depth - The depth of the slice in the octree
  * @param octree - The octree to sample
- *
- * A slice is parameterized as:
- *  - slice origin: an arbitrary (non-grid-aligned) point in world space
- *  - depth: which level of the octree we are rendering
- *  - ray direction: a vector indicating which way the camera is pointed
- *
- * When rendering a scene, we start with a slice origin offscreen to the left of
- * the camera. When rendering the whole tree (not zoomed in) we start at a depth
- * of 2. At that depth, the octree has 8x8x8 voxels.
- *
- * We use a plane perpendicular to the camera—the "camera plane"—intersecting
- * the slice origin, and use that to locate the nearest voxel in the octree.
- * That is voxel 000.
+ * @returns Slice
  *
  * We will move through each xy combination, and determine 8 voxels along the
  * (camera's) z-axis. This group of 8 voxels is called a "core".
@@ -42,56 +35,59 @@ type SampleSliceArgs = {
  * move on to the core starting at 010. We return the z-plane back to the slice
  * origin, and move the y-plane over by the yStep, which is calculated the same
  * way as the zStep.
+ *
+ * This is kind of a form of DDA, although it's a very simple version where we
+ * don't try to rasterize a nice line, we just sample a string of pixels along a
+ * ray.
  */
 export function sampleSlice({
   sliceOrigin,
   rayDirection,
   depth,
   octree,
-}: SampleSliceArgs): Int32Array {
+}: SampleSliceArgs): Slice {
   /**
-   * The slice to be constructed is an 8x8x8 screen space projection of the
+   * The slice to be constructed is an 8x8x8 screen-aligned projection of the
    * octree, containing 8-bit unsigned integers representing the color at that
    * voxel.
    *
-   * The projection is always 8x8x8 even if it extends outside the image
-   * volume, since we just fill in empty space with 0's.
+   * The projection is always 8x8x8 even if it extends outside the image volume,
+   * since we just fill in empty space with 0's (fully transparent).
    *
    * The voxels in a slice will be labeled 000 -> 888, where voxel "123" has
    * x=1, y=2, z=3
    */
   const slice = new Int32Array(512)
 
-  /**
-   * The steps determine how we move through world space space, such that the
-   * samples we pull will form a camera-aligned volume.
-   */
-  const xStep = Math.sqrt(1 + rayDirection[1] ** 2 + rayDirection[2] ** 2)
-  const yStep = Math.sqrt(1 + rayDirection[0] ** 2 + rayDirection[2] ** 2)
-  const zStep = Math.sqrt(1 + rayDirection[0] ** 2 + rayDirection[1] ** 2)
+  const step = getStepLength(rayDirection, depth)
 
   /**
-   * A point in world space, which the voxel we are putting in the slice is
-   * the nearest voxel to.
+   * Now we can add our 512 voxels to the slice. As we step through the x,y,z
+   * indexes, we'll update this nodeOrigin to be a new point in world space.
+   * That's going to the "origin" for the voxel. Which we're calling the "node
+   * origin".
+   *
+   * Once we have this node origin, we will figure out which voxel in the octree
+   * is closest to it and that's what gets inserted into the slice at a given
+   * index (000, 001, etc).
    */
   const nodeOrigin = Vec3.clone(sliceOrigin)
 
   // We will iterate through 64 camera-aligned "cores" through the octree by
   // looping over x and y in pseudo-screens-space:
-  for (let x = 0; x < 8; x++) {
-    for (let y = 0; y < 8; y++) {
+  for (let xIndex = 0; xIndex < 8; xIndex++) {
+    for (let yIndex = 0; yIndex < 8; yIndex++) {
       // Calculate the origin of this core:
-      nodeOrigin.x = sliceOrigin.x + x * xStep
-      nodeOrigin.y = sliceOrigin.y + y * yStep
+      nodeOrigin.x = sliceOrigin.x + xIndex * step.x
+      nodeOrigin.y = sliceOrigin.y + yIndex * step.y
 
       // Now we step down through the (camera's) z-axis:
-      for (let z = 0; z < 8; z++) {
-        nodeOrigin.z = sliceOrigin.z + z * zStep
+      for (let zIndex = 0; zIndex < 8; zIndex++) {
+        nodeOrigin.z = sliceOrigin.z + zIndex * step.z
 
-        // Find and store the voxel. Shift the y value 3 bits to the right,
-        // enough space for an 8. Shift the z value by 6, enough space for two
-        // 8s.
-        const nodeIndex = x + (y << 3) + (z << 6)
+        // Find and store the voxel. See the documentation in Slice.ts for
+        // details on how this node index is calculated.
+        const nodeIndex = xIndex | (yIndex << 3) | (zIndex << 6)
         slice[nodeIndex] = sampleColor(octree, nodeOrigin, depth)
       }
     }
@@ -206,60 +202,23 @@ function sampleColor(
 }
 
 /**
- * A 512x512x512x8 bit image is roughly 134 million voxels, in the worst case
- * scenario that's ~150 megabytes. However we wouldn't store all of that in a
- * single octree, we would need to break that down into regions that are
- * rendered separately.
+ * The steps determine how we move through world space, such that the samples
+ * we pull will form a camera-aligned volume.
  *
- * An octree is stored as an array of 32-bit uints
- * (https://www.khronos.org/opengl/wiki/Data_Type_(GLSL)#Scalars)
+ * At depth d, each voxel has a side length of 1/(2^d). Since we're sampling
+ * an 8x8x8 slice, we need to scale our step size.
  *
- * Each slice of 8 array entries represents an octant. The values in the array
- * can represent leaf or branch nodes.
- *
- * A leaf node is simply going to be an 8-bit unsigned integer, 0-255,
- * representing the opacity of the voxel.
- *
- * A branch node will be greater than 255, and it will be made up of two
- * components:
- *  - the weighted average of the 8 voxels that make up the octant (an opacity)
- *  - an index into the next level of the octree
- *
- * These two values are packed together into a single 32-bit uint, where:
- *
- *     const value = (index << 8) | opacity
- *     const opacity = value & 0xFF
- *     const index = value >>> 8
- *
- * Validation:
- *  - A voxel can only point to an octant with an index greater than its own index.
- *
- * Example:
- *
- * A 2 level deep octree, where only the bottom-most slice is fully opaque, the
- * rest transparent.
- *
- * The root octant would then have four filled values, and four empty ones.
- * Assuming there is some form of de-duplication on the leaf octants, we only
- * need leaf octant, which will be at the address 256 (index 8):
- *
- * | Index | Value | What it represents        |
- * | ----- | ----- | ------------------------- |
- * | 0     | 2080  | the octant at index 8     |
- * | 1     | 2080  | the octant at index 8     |
- * | 2     | 2080  | the octant at index 8     |
- * | 3     | 2080  | the octant at index 8     |
- * | 4     | 0     | 0% opaque                 |
- * | 5     | 0     | 0% opaque                 |
- * | 6     | 0     | 0% opaque                 |
- * | 7     | 0     | 0% opaque                 |
- * | 8     | 255   | 100% opaque               |
- * | 9     | 255   | 100% opaque               |
- * | 10    | 255   | 100% opaque               |
- * | 11    | 255   | 100% opaque               |
- * | 12    | 0     | 0% opaque                 |
- * | 13    | 0     | 0% opaque                 |
- * | 14    | 0     | 0% opaque                 |
- * | 15    | 0     | 0% opaque                 |
+ * We use √3 (the length of a diagonal of a unit cube) in the numerator to
+ * ensure we step far enough along the ray that we never sample the same voxel
+ * twice. Using this value ensures our step size is always large enough to
+ * "escape" the current voxel regardless of ray direction.
  */
-type Octree = number[]
+export function getStepLength(rayDirection: Vec3, depth: number) {
+  const depthScale = Math.sqrt(3) / ((1 << depth) * 8)
+
+  return new Vec3(
+    Math.sqrt(1 + rayDirection[1] ** 2 + rayDirection[2] ** 2) * depthScale,
+    Math.sqrt(1 + rayDirection[0] ** 2 + rayDirection[2] ** 2) * depthScale,
+    Math.sqrt(1 + rayDirection[0] ** 2 + rayDirection[1] ** 2) * depthScale
+  )
+}

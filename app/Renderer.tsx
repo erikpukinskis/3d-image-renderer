@@ -3,7 +3,7 @@ import { Mat4, vec3, Vec3 } from "gl-matrix"
 import React, { useRef, useState } from "react"
 import V_FULL_SCREEN_QUAD from "./shaders/V_FULL_SCREEN_QUAD.glsl?raw"
 import F_CAST_OCTREE_SLICE from "./shaders/F_CAST_OCTREE_SLICE.glsl?raw"
-import { sampleSlice } from "./sampleSlice"
+import { getStepLength, sampleSlice } from "./sampleSlice"
 
 const CANVAS_WIDTH = 300
 const CANVAS_HEIGHT = 300
@@ -157,10 +157,17 @@ export const Renderer: React.FC = () => {
       throw new Error("Could not get WebGL context")
     }
 
-    const program = createShaderProgram(gl)
+    // These probably need to be parameters to render() and we probably need to
+    // move some of this up into initialization. But for now this will get us
+    // going.
+    const rayDirection = new Vec3(0, 0, -1) // FIXME: This should be the camera's direction
+    const depth = 0
+    const sliceOrigin = new Vec3(-1, -1, 0)
+    const uVoxelStep = getStepLength(rayDirection, depth)
 
     // useProgram is similar to bindBuffer, since we can only have one program
     // going at a time we need to tell OpenGL which is up.
+    const program = createShaderProgram(gl)
     gl.useProgram(program)
     gl.viewport(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
 
@@ -173,13 +180,13 @@ export const Renderer: React.FC = () => {
     gl.uniform1f(gl.getUniformLocation(program, "uFOV"), CAMERA_FOV)
 
     // Set the slice uniforms
-    const sliceOrigin = new Vec3(-1, -1, 0)
+
     gl.uniform1iv(
       gl.getUniformLocation(program, "uSlice"),
       sampleSlice({
-        sliceOrigin: sliceOrigin,
-        depth: 0,
-        rayDirection: new Vec3(0, 0, -1), // FIXME: This should be the camera's direction
+        sliceOrigin,
+        depth,
+        rayDirection,
         octree: BOTTOM_PLANE_OCTREE,
       })
     )
@@ -188,6 +195,12 @@ export const Renderer: React.FC = () => {
       sliceOrigin.x,
       sliceOrigin.y,
       sliceOrigin.z
+    )
+    gl.uniform3f(
+      gl.getUniformLocation(program, "uVoxelStep"),
+      uVoxelStep.x,
+      uVoxelStep.y,
+      uVoxelStep.z
     )
 
     // Set the camera uniform(s)
