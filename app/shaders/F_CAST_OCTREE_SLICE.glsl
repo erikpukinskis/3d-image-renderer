@@ -26,7 +26,6 @@ void mainImage(out vec4 outColor, vec2 fragCoord) {
 
   vec3 rayDirection = vec3(ndc, -1.0);
 
-
   // Alright. So, here we are rendering a slice. The slice is 512 levels of
   // opacity 0 (transparent) to 255 (opaque). They are arranged in a 3 dimensional
   // (x,y,z) volume stored as an array of uint32. The volume is camera aligned.
@@ -42,25 +41,48 @@ void mainImage(out vec4 outColor, vec2 fragCoord) {
   // We'll use the uProjection matrix to help us project into world space from the
   // camera.
 
-  // We'll use uVoxelStep to calculate the position in world space of a voxel. The
-  // world-space position of any given voxel (x,y,z) in a slice is:
-
-  //     vec3(
-  //       v0: uSliceOrigin.x + x * uVoxelStep.x,
-  //       v1: uSliceOrigin.y + y * uVoxelStep.y,
-  //       v2: uSliceOrigin.z + z * uVoxelStep.z
-  //      )
-
   // The first step, however is to figure out which "core" of the slice we are
-  // looking down.
+  // looking down. For me, I am thinking of "voxels" as screen space entities,
+  // whereas "nodes" are world space entities.  I don't _think_ this should
+  // require any searching.
 
-  int x = 0;
-  int y = 0;
+  // First, we'll take the camera plane of the slice, and figure out where the
+  // ray intersects that. Call that the voxel origin. See "Ray-plane
+  // intersection test" in F_QUAD_RAY_CAST.glsl for details on how this works.
+  vec3 anyPointOnPlane = uSliceOrigin;
+  vec3 rayOrigin = vec3(0.0);
+  vec3 rayDirection = vec3(ndc, -1.0);
+  // The normal of the camera plane of the slice is always going to be the same
+  // as the rayDirection since the slice is camera aligned.
+  vec3 normal = rayDirection;
+  float denomenator = dot(rayDirection, normal);
+  // Note: that the denomenator will never be zero since the rayDirection is
+  // perpendicular to the camera plane.
+  float t = dot(anyPointOnPlane - rayOrigin, normal) / denomenator;
+  // Note: We don't need to check for -t (intersection behind the camera) for
+  // the same reason.
+  vec3 voxelOrigin = t * rayDirection;
 
-  // TODO: get the correct values of x and y
+  // Next we calculate the offset from the slice origin to the voxel origin.
+  // Call that the voxel offset.
+  vec3 voxelOffset = voxelOrigin - uSliceOrigin;
 
+  // Then divide that offset by the voxel step, and the integer form of that
+  // should give us our index within the slice.
+  vec3 index = voxelOffset / uVoxelStep;
 
-  voxelOrigin = uSliceOrigin insersect rayDirection
+  // I don't think we have any guarantees that the ray even intersects the
+  // slice. In that case x and/or y will be out of bounds (outside the 8x8x8
+  // grid of the slice) so we just return black.
+  if (index.x < 0 || index.x >= 8 || index.y < 0 || index.y >= 8)  {
+    outColor = black;
+    return;
+  }
+
+  // We can cast to int (truncate towards zero) to get the floor, because we
+  // handle negative values above.
+  int x = int(index.x);
+  int y = int(index.y);
 
 
 
@@ -74,7 +96,7 @@ void mainImage(out vec4 outColor, vec2 fragCoord) {
 
     if (uSlice[voxelIndex] > 0) {
       outColor = magenta;
-      break;
+      return;
     }
   }
 
