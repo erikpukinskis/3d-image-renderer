@@ -30,4 +30,4 @@
  *    binary index = 1 | 10000 | 11000000 = 11010001
  *    decimal index = 209
  */
-export type Slice = Int32Array
+export type Slice = Uint32Array

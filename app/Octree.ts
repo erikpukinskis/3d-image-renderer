@@ -4,6 +4,8 @@
  * single octree, we would need to break that down into regions that are
  * rendered separately.
  *
+ * When we render the octree, we
+ *
  * An octree is stored as an array of 32-bit uints
  * (https://www.khronos.org/opengl/wiki/Data_Type_(GLSL)#Scalars)
  *

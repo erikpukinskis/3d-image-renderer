@@ -22,9 +22,40 @@ void mainImage(out vec4 outColor, vec2 fragCoord) {
   vec2 uv = fragCoord / uResolution.xy;
 
   // Convert to normalized device coordinates
-  vec2 ndc = (uv * 2.0 - 1.0) * uFOV;
+  vec2 ndc = (uv * 2.0 - 1.0);
 
-  vec3 rayDirection = vec3(ndc, -1.0);
+  /**
+   * Clip space is the set of points on the near plane of the camera's view
+   * frustum. We're finding the point on the near plane that's intersected by
+   * this pixel's ray.
+   */
+  vec4 clipPos = vec4(ndc, -1.0, 1);
+
+  /**
+   * Transform from clip space to view space by applying the inverse projection.
+   * 
+   * This is a bit tough to understand, but Claude gave a great
+   * analogy: Imagine you're in a dark room with a flashlight. The projection
+   * Matrix is like: "Where on the wall will my flashlight beam hit if I point
+   * it in this direction?" The Inverse Projection Matrix is like: "If I see a
+   * spot on the wall, which direction do I need to point my flashlight to hit
+   * that spot?"
+   *
+   * TODO(erik): We might want to move this out into JavaScript for performance
+   * reasons.
+   */
+  vec4 viewPos = inverse(uProjection) * clipPos;
+
+  // This division is what creates the perspective effect, making distant
+  // objects smaller. Note that since we set w=1 in the clipPos, anything on the
+  // near plane will not be affected by this, since it's just divided by one.
+  // Points farther away would have different w values after the perspective
+  // division.
+  viewPos /= viewPos.w;
+
+  // Finally, we discard the distance to that point to get the normalized
+  // direction.
+  vec3 rayDirection = normalize(viewPos.xyz);
 
   // Alright. So, here we are rendering a slice. The slice is 512 levels of
   // opacity 0 (transparent) to 255 (opaque). They are arranged in a 3 dimensional
@@ -49,16 +80,19 @@ void mainImage(out vec4 outColor, vec2 fragCoord) {
   // First, we'll take the camera plane of the slice, and figure out where the
   // ray intersects that. Call that the voxel origin. See "Ray-plane
   // intersection test" in F_QUAD_RAY_CAST.glsl for details on how this works.
+
   vec3 anyPointOnPlane = uSliceOrigin;
   vec3 rayOrigin = vec3(0.0);
-  vec3 rayDirection = vec3(ndc, -1.0);
+
   // The normal of the camera plane of the slice is always going to be the same
   // as the rayDirection since the slice is camera aligned.
   vec3 normal = rayDirection;
   float denomenator = dot(rayDirection, normal);
+
   // Note: that the denomenator will never be zero since the rayDirection is
   // perpendicular to the camera plane.
   float t = dot(anyPointOnPlane - rayOrigin, normal) / denomenator;
+ 
   // Note: We don't need to check for -t (intersection behind the camera) for
   // the same reason.
   vec3 voxelOrigin = t * rayDirection;
@@ -74,7 +108,8 @@ void mainImage(out vec4 outColor, vec2 fragCoord) {
   // I don't think we have any guarantees that the ray even intersects the
   // slice. In that case x and/or y will be out of bounds (outside the 8x8x8
   // grid of the slice) so we just return black.
-  if (index.x < 0 || index.x >= 8 || index.y < 0 || index.y >= 8)  {
+  // TODO(erik): Do we need to bounds check z here?
+  if (index.x < 0.0 || index.x >= 8.0 || index.y < 0.0 || index.y >= 8.0)  {
     outColor = black;
     return;
   }
@@ -94,7 +129,7 @@ void mainImage(out vec4 outColor, vec2 fragCoord) {
     // calculated.
     int voxelIndex = x | (y << 3) | (z << 6);
 
-    if (uSlice[voxelIndex] > 0) {
+    if (uSlice[voxelIndex] > uint(0)) {
       outColor = magenta;
       return;
     }

@@ -181,7 +181,7 @@ export const Renderer: React.FC = () => {
 
     // Set the slice uniforms
 
-    gl.uniform1iv(
+    gl.uniform1uiv(
       gl.getUniformLocation(program, "uSlice"),
       sampleSlice({
         sliceOrigin,
@@ -301,12 +301,16 @@ export const Renderer: React.FC = () => {
       1
     )
 
-    const projectionLocation = gl.getUniformLocation(program, "uProjection")
-
     const projectionMatrix = new Mat4()
+
     Mat4.multiply(projectionMatrix, translationMatrix, yRotationMatrix)
     Mat4.multiply(projectionMatrix, projectionMatrix, xRotationMatrix)
-    gl.uniformMatrix4fv(projectionLocation, false, projectionMatrix)
+
+    gl.uniformMatrix4fv(
+      gl.getUniformLocation(program, "uProjection"),
+      false,
+      projectionMatrix
+    )
 
     // Draw
     const vertexBuffer = gl.createBuffer()
