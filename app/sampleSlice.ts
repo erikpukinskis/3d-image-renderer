@@ -3,10 +3,28 @@ import { Slice } from "./Slice"
 import { Octree } from "./Octree"
 
 type SampleSliceArgs = {
+  /**
+   * Origin of the slice (world space)
+   *
+   * Eventually, this slice origin will vary as we do the temporal
+   * accumulation. But for now we just render the root slice. Cursor has this
+   * starting at z=1, for reasons that are still unclear to me.
+   */
   sliceOrigin: Vec3
+
+  /**
+   * Direction the camera is pointed in (world space)
+   *
+   * TODO(erik): These probably need to be parameters to render() and we
+   * probably need to move some of this up into initialization. But for now
+   * this will get us going.
+   *
+   * TODO(erik): This should be the camera's direction
+   */
+
   rayDirection: Vec3
   depth: number
-  octree: number[]
+  octree: Octree
 }
 
 /**
@@ -59,6 +77,9 @@ export function sampleSlice({
    */
   const slice = new Uint32Array(512)
 
+  /**
+   * Spacing of the voxels in a slice (world space deltas)
+   */
   const step = getStepLength(rayDirection, depth)
 
   // DEBUG: Log octree traversal parameters
@@ -70,10 +91,12 @@ export function sampleSlice({
   })
 
   /**
-   * Now we can add our 512 voxels to the slice. As we step through the x,y,z
-   * indexes, we'll update this nodeOrigin to be a new point in world space.
-   * That's going to the "origin" for the voxel. Which we're calling the "node
-   * origin".
+   * Origin for each voxel as we iterate through the slice (world space)
+   *
+   * Our goal is to add our 512 voxels to the slice. As we step through the
+   * x,y,z indexes, we'll update this nodeOrigin to be a new point in world
+   * space. That's going to the "origin" for the voxel. Which we're calling the
+   * "node origin".
    *
    * Once we have this node origin, we will figure out which voxel in the octree
    * is closest to it and that's what gets inserted into the slice at a given
@@ -176,10 +199,13 @@ function sampleColor(
   // We are always looking at an octant. The root octant is at index 0, so that's where we start.
   let octantIndex = 0
 
-  // Track current octant origin as we traverse
-  let octantX = 0
-  let octantY = 0
-  let octantZ = 0
+  /**
+   * The origin (slice space) of the current octree node we're considering.
+   *
+   * As we are descending down the octree looking for the closest node, we will
+   * keep track of the most recent node origin.
+   */
+  const nodeOrigin = new Vec3(0, 0, 0)
 
   // DEBUG: Track the traversal path
   let traversalPath = [octantIndex]
@@ -189,17 +215,26 @@ function sampleColor(
     // We've just stepped into a new depth. First task is to figure out which
     // node in the octant at this depth is closest to the point.
 
-    // In order to know the bounding boxes for each octant, we calculate the
-    // octant size and the node size. For example, at depth 2, the octant is
-    // 8x8x8, so the octant size is 8 and the node size is 4.
+    /**
+     * The (world space) size of an octave at this depth
+     *
+     * In order to know the bounding boxes for each octant, we calculate the
+     * octant size and the node size. For example, at depth 2, the octree is
+     * 8x8x8, so the octant size is 8 and the node size is 4.
+     */
     const octantSize = 1.0 / (1 << currentDepth)
+    /**
+     * The (world space) size of a node at this depth
+     */
     const nodeSize = octantSize / 2
 
-    // We'll do that by asking, on which axes is the sample point more than
-    // halfway past the octave origin?
-    const x = samplePoint.x >= octantX + nodeSize ? 1 : 0
-    const y = samplePoint.y >= octantY + nodeSize ? 1 : 0
-    const z = samplePoint.z >= octantZ + nodeSize ? 1 : 0
+    // Now we'll ask: on which axes is the sample point more than halfway past
+    // the octave origin? These are deltas in "octant space" which is a thing we
+    // rarely use. Basically, 0..1 where 0 is the first node and 1 is the
+    // second.
+    const x = samplePoint.x >= nodeOrigin.x + nodeSize ? 1 : 0
+    const y = samplePoint.y >= nodeOrigin.y + nodeSize ? 1 : 0
+    const z = samplePoint.z >= nodeOrigin.z + nodeSize ? 1 : 0
 
     // Then we can find the decimal octant offset by bit shifting. So the x
     // value determines whether the last binary digit is 0 or 1, y value
@@ -236,9 +271,9 @@ function sampleColor(
 
     // And we narrow down the octant origin a little bit, to the node origin.
     // Because that's going to be the octant at the next level down.
-    if (x) octantX += nodeSize
-    if (y) octantY += nodeSize
-    if (z) octantZ += nodeSize
+    if (x) nodeOrigin.x += nodeSize
+    if (y) nodeOrigin.y += nodeSize
+    if (z) nodeOrigin.z += nodeSize
   }
 
   // If we make it through the loop, we're still on an octant that has children,
@@ -260,6 +295,10 @@ function sampleColor(
 /**
  * The steps determine how we move through world space, such that the samples
  * we pull will form a camera-aligned volume.
+ *
+ * @param rayDirection - The direction of the ray (world space)
+ * @param depth - The depth in the octree
+ * @returns Vec3 of step lengths in each dimension (world space)
  *
  * At depth d, each voxel has a side length of 1/(2^d). Since we're sampling
  * an 8x8x8 slice, we need to scale our step size.

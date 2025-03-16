@@ -9,16 +9,21 @@ const CANVAS_WIDTH = 300
 const CANVAS_HEIGHT = 300
 
 /**
- * We scale up the Y rotation a little so that you can do a full 180 in a single drag
+ * We scale up the Y rotation a little so that you can do a full 180 in a single
+ * drag
  */
 const X_ROTATION_SPEED = 1
 const Y_ROTATION_SPEED = 3
 
 /**
- * Camera definition
+ * The initial distance that the camera is set back (world space)
  */
 const CAMERA_DISTANCE = -6
 const CAMERA_FOV = 0.2
+
+/**
+ * A quad that covers the entire canvas (NDC space)
+ */
 const FULL_SCREEN_QUAD = new Float32Array([
   -1.0,
   -1.0,
@@ -131,6 +136,9 @@ type Camera = {
 export const Renderer: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
+  /**
+   * State of the camera (world space)
+   */
   const cameraRef = useRef<Camera>({
     tx: 0,
     ty: 0,
@@ -157,12 +165,31 @@ export const Renderer: React.FC = () => {
       throw new Error("Could not get WebGL context")
     }
 
-    // These probably need to be parameters to render() and we probably need to
-    // move some of this up into initialization. But for now this will get us
-    // going.
-    const rayDirection = new Vec3(0, 0, -1) // FIXME: This should be the camera's direction
+    /**
+     * Direction the camera is pointed in (world space)
+     *
+     * TODO(erik): These probably need to be parameters to render() and we
+     * probably need to move some of this up into initialization. But for now
+     * this will get us going.
+     *
+     * TODO(erik): This should be the camera's direction
+     */
+    const rayDirection = new Vec3(0, 0, -1)
+
     const depth = 4
+
+    /**
+     * Origin of the slice (world space)
+     *
+     * Eventually, this slice origin will vary as we do the temporal
+     * accumulation. But for now we just render the root slice. Cursor has this
+     * starting at z=1, for reasons that are still unclear to me.
+     */
     const sliceOrigin = new Vec3(0, 0, 1)
+
+    /**
+     * Spacing of the voxels in a slice (world space deltas)
+     */
     const uVoxelStep = getStepLength(rayDirection, depth)
 
     console.log("Rendering with:", {
@@ -172,9 +199,10 @@ export const Renderer: React.FC = () => {
       uVoxelStep: Array.from(uVoxelStep),
     })
 
+    const program = createShaderProgram(gl)
+
     // useProgram is similar to bindBuffer, since we can only have one program
     // going at a time we need to tell OpenGL which is up.
-    const program = createShaderProgram(gl)
     gl.useProgram(program)
     gl.viewport(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
 
@@ -202,12 +230,20 @@ export const Renderer: React.FC = () => {
 
     // Set the uniforms for the slice and it's origin.
     gl.uniform1uiv(gl.getUniformLocation(program, "uSlice"), sliceData)
+
+    /**
+     * The origin (world space) of the slice we are about to render
+     */
     gl.uniform3f(
       gl.getUniformLocation(program, "uSliceOrigin"),
       sliceOrigin.x,
       sliceOrigin.y,
       sliceOrigin.z
     )
+
+    /**
+     * Spacing of voxels in the slice (world space deltas)
+     */
     gl.uniform3f(
       gl.getUniformLocation(program, "uVoxelStep"),
       uVoxelStep.x,
@@ -220,7 +256,8 @@ export const Renderer: React.FC = () => {
     const { tx, ty, tz, xRotation, yRotation } = cameraRef.current
 
     /**
-     * Translation in 3D:
+     * 3D translation for the camera (world space)
+     *
      * https://www.youtube.com/watch?v=bW9goiYaOBs
      *
      *    1  0  0  tx
@@ -313,7 +350,9 @@ export const Renderer: React.FC = () => {
       1
     )
 
-    // Projection matrix camera setup
+    /**
+     * Projection matrix camera setup (world space)
+     */
     const projectionMatrix = new Mat4()
     Mat4.multiply(projectionMatrix, translationMatrix, yRotationMatrix)
     Mat4.multiply(projectionMatrix, projectionMatrix, xRotationMatrix)
@@ -328,6 +367,10 @@ export const Renderer: React.FC = () => {
     const vertexBuffer = gl.createBuffer()
     gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer)
     gl.bufferData(gl.ARRAY_BUFFER, FULL_SCREEN_QUAD, gl.STATIC_DRAW)
+
+    /**
+     * Location of the vertex attribute that receives position data (NDC space)
+     */
     const positionLocation = gl.getAttribLocation(program, "aPosition")
 
     gl.vertexAttribPointer(

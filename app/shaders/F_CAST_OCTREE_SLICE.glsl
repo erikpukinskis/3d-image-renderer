@@ -1,10 +1,34 @@
 #version 300 es
 precision mediump float;
+
+/**
+ * Screen resolution in pixels 
+ */
 uniform vec2 uResolution;
+
+/**
+ * Origin of the slice (world space)
+ */
 uniform vec3 uSliceOrigin;
+
+/**
+ * Step size between voxels (world space)
+ */
 uniform vec3 uVoxelStep;
+
+/**
+ * 8x8x8 voxel volume data (slice space)
+ */
 uniform uint uSlice[512];
+
+/**
+ * Camera projection matrix (world to clip space transform)
+ */
 uniform mat4 uProjection;
+
+/**
+ * The camera's field of view
+ */
 uniform float uFOV;
 
 // Interpolated position for this pixel
@@ -22,7 +46,9 @@ void mainImage(out vec4 outColor, vec2 fragCoord) {
   // Convert from pixel coordinates to uv
   vec2 uv = fragCoord / uResolution.xy;
 
-  // Convert to normalized device coordinates
+  /**
+   * Convert from UV to normalized device coordinates (NDC space)
+   */
   vec2 ndc = (uv * 2.0 - 1.0);
 
   /**
@@ -33,7 +59,8 @@ void mainImage(out vec4 outColor, vec2 fragCoord) {
   vec4 clipPos = vec4(ndc, -1.0, 1);
 
   /**
-   * Transform from clip space to view space by applying the inverse projection.
+   * Transform from clip space to view space by applying the inverse projection
+   * (camera space.)
    * 
    * This is a bit tough to understand, but Claude gave a great
    * analogy: Imagine you're in a dark room with a flashlight. The projection
@@ -54,8 +81,11 @@ void mainImage(out vec4 outColor, vec2 fragCoord) {
   // division.
   viewPos /= viewPos.w;
 
-  // Finally, we discard the distance to that point to get the normalized
-  // direction.
+  /**
+   * Normalized ray direction (??? space)
+   *
+   * Obtained by discarding the distance to the view position.
+   */
   vec3 rayDirection = normalize(viewPos.xyz);
 
   // Alright. So, here we are rendering a slice. The slice is 512 levels of

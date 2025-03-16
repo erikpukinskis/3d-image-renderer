@@ -1,12 +1,17 @@
 /**
+ * Octree data structure
+ *
+ * The octree will be rendered to world space coordinates with an origin at
+ * [0,0,0] and extending to [1,1,1].
+ *
  * A 512x512x512x8 bit image is roughly 134 million voxels, in the worst case
  * scenario that's ~150 megabytes. However we wouldn't store all of that in a
  * single octree, we would need to break that down into regions that are
  * rendered separately.
  *
- * When we render the octree, we center it at [0.5,0.5,0.5] and scale it to 1x1x1 in
- * world space. So the octree's bounds will run from [0,0,0] to [1,1,1] on all three
- * axes.
+ * When we render the octree, we center it at [0.5,0.5,0.5] and scale it to
+ * 1x1x1 in world space. So the octree's bounds will run from [0,0,0] to [1,1,1]
+ * on all three axes.
  *
  * TODO(erik): The camera down the z-axis in the negative direction, but I'm not
  * sure whether z=1 is the front or the back of the octree, when looking from
