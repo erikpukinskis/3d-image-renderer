@@ -4,8 +4,8 @@
  * single octree, we would need to break that down into regions that are
  * rendered separately.
  *
- * When we render the octree, we center it at 0,0,0 and scale it to 1x1x1 in
- * world space. So the octree's bounds will run from -0.5 to 0.5 on all three
+ * When we render the octree, we center it at [0.5,0.5,0.5] and scale it to 1x1x1 in
+ * world space. So the octree's bounds will run from [0,0,0] to [1,1,1] on all three
  * axes.
  *
  * TODO(erik): The camera down the z-axis in the negative direction, but I'm not

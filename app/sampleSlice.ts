@@ -150,15 +150,15 @@ function sampleColor(
   samplePoint: Vec3,
   targetDepth: number
 ): number {
-  if (samplePoint.x < -0.5 || samplePoint.x > 0.5) {
+  if (samplePoint.x < 0 || samplePoint.x > 1) {
     return 0
   }
 
-  if (samplePoint.y < -0.5 || samplePoint.y > 0.5) {
+  if (samplePoint.y < 0 || samplePoint.y > 1) {
     return 0
   }
 
-  if (samplePoint.z < -0.5 || samplePoint.z > 0.5) {
+  if (samplePoint.z < 0 || samplePoint.z > 1) {
     return 0
   }
 

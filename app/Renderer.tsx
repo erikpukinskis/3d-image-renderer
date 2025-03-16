@@ -162,7 +162,7 @@ export const Renderer: React.FC = () => {
     // going.
     const rayDirection = new Vec3(0, 0, -1) // FIXME: This should be the camera's direction
     const depth = 4
-    const sliceOrigin = new Vec3(-0.5, -0.5, 0.5)
+    const sliceOrigin = new Vec3(0, 0, 1)
     const uVoxelStep = getStepLength(rayDirection, depth)
 
     console.log("Rendering with:", {
