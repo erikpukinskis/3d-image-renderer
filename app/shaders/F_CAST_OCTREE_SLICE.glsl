@@ -16,6 +16,7 @@ out vec4 fragColor;
 // Some colors for clarity:
 vec4 black = vec4(0.0, 0.0, 0.0, 1.0);
 vec4 magenta = vec4(1.0, 0.0, 1.0, 1.0);
+vec4 red = vec4(1.0, 0.0, 0.0, 1.0);
 
 void mainImage(out vec4 outColor, vec2 fragCoord) {
   // Convert from pixel coordinates to uv
@@ -110,7 +111,7 @@ void mainImage(out vec4 outColor, vec2 fragCoord) {
   // grid of the slice) so we just return black.
   // TODO(erik): Do we need to bounds check z here?
   if (index.x < 0.0 || index.x >= 8.0 || index.y < 0.0 || index.y >= 8.0)  {
-    outColor = black;
+    outColor = red; // Change to red to see where this happens
     return;
   }
 
@@ -119,23 +120,38 @@ void mainImage(out vec4 outColor, vec2 fragCoord) {
   int x = int(index.x);
   int y = int(index.y);
 
-
+  // DEBUG visualization - remove the early return to see actual octree results
+  // float xNorm = float(x) / 8.0;
+  // float yNorm = float(y) / 8.0;
+  // outColor = vec4(xNorm, yNorm, 0.5, 1.0);
+  // return;
 
   // Once we have the core, we simply march through the 8 voxels, and return the
   // value of whichever one we find.
-
+  bool foundNonZero = false;
+  
   for (int z = 0; z < 8; z++) {
     // See the documentation in Slice.ts for details on how this index is
     // calculated.
     int voxelIndex = x | (y << 3) | (z << 6);
-
-    if (uSlice[voxelIndex] > uint(0)) {
-      outColor = magenta;
+    
+    // Debug coloring based on the voxel index's value
+    uint sliceValue = uSlice[voxelIndex];
+    if (sliceValue > uint(0)) {
+      // If we found a non-zero value, use its intensity for coloring
+      float intensity = float(sliceValue) / 255.0;
+      outColor = vec4(intensity, 0.0, intensity, 1.0); // Magenta with variable intensity
+      foundNonZero = true;
       return;
     }
   }
-
-  outColor = black;
+  
+  if (!foundNonZero) {
+    // If we didn't find any non-zero values, color based on position for debugging
+    float xNorm = float(x) / 8.0;
+    float yNorm = float(y) / 8.0;
+    outColor = vec4(xNorm * 0.2, yNorm * 0.2, 0.5, 1.0); // Dimmer position-based coloring
+  }
 }
 
 // This is similar to ShaderToy's boilerplate:

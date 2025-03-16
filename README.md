@@ -107,6 +107,112 @@ leaf octant, which will be at the address 256 (index 8):
 | 14    | 0     | 0% opaque          |
 | 15    | 0     | 0% opaque          |
 
+## Coordinate Systems
+
+The renderer uses several coordinate systems, which are important to understand:
+
+### 1. World/Octree Space
+
+- **Bounds**: [0,0,0] to [1,1,1]
+- **Purpose**: This is the fundamental coordinate system used by the octree. The
+  entire octree is a 1x1x1 unit cube with its origin at the corner [0,0,0] and
+  extending to [1,1,1].
+- **Used in**: The `sampleSlice` function samples a camera-aligned 8x8x8 slice
+  by stepping through the octree in world space.
+
+### 2. Camera Space
+
+- **Bounds**: Origin (0,0,0) at camera position, extending into negative z
+  direction
+- **Purpose**: Used for ray direction calculations and view frustum
+- **Used in**: The fragment shader (`F_CAST_OCTREE_SLICE.glsl`)
+- **Initial Setup**: The camera is initially positioned at [0.5,0.5,-6.0] in
+  world space, looking toward the center of the octree at [0.5,0.5,0.5]. That
+  said, the camera can move freely in world space.
+- **Conversion from World to Camera Space**:
+  ```
+  cameraPos = worldPos * viewMatrix
+  ```
+  Where the viewMatrix combines rotation and translation to position the camera:
+  ```
+  viewMatrix = inverse(cameraTranslationMatrix * cameraRotationMatrix)
+  ```
+
+### 3. Clip Space
+
+- **Bounds**: [-w,w] in all dimensions, where w is the fourth component of
+  clip-space coordinates
+- **Purpose**: Homogeneous coordinate space where the view frustum becomes a
+  cube
+- **Used in**: Intermediate space between camera space and NDC
+- **Conversion from Camera to Clip Space**:
+  ```
+  clipPos = cameraPos * projectionMatrix
+  ```
+  Where projectionMatrix defines the view frustum parameters (field of view,
+  aspect ratio, near and far planes)
+
+### 4. Slice Space
+
+- **Bounds**: Integer coordinates from [0,0,0] to [7,7,7], representing indices
+  into an 8×8×8 grid
+- **Purpose**: Indices into the 512-element slice array (8×8×8 = 512)
+- **Used in**: Originates in `sampleSlice.ts` where the slice is generated, and
+  then we project back from the slice into screen space in the fragment shader.
+- **Conversion from World to Slice Space**:
+  ```
+  sliceX = floor(worldX * 8)
+  sliceY = floor(worldY * 8)
+  sliceZ = floor(worldZ * 8)
+  ```
+- **Conversion from Slice to World Space** (for determining sample points):
+  ```
+  worldX = (sliceX + 0.5) / 8
+  worldY = (sliceY + 0.5) / 8
+  worldZ = (sliceZ + 0.5) / 8
+  ```
+  This places the sample point at the center of each slice cell.
+
+### 5. Normalized Device Coordinates (NDC)
+
+- **Bounds**: [-1,-1,-1] to [1,1,1]
+- **Purpose**: Standard WebGL screen-space coordinates
+- **Used in**: Fragment shader
+- **Conversion from Clip to NDC Space**:
+  ```
+  ndcX = clipX / clipW
+  ndcY = clipY / clipW
+  ndcZ = clipZ / clipW
+  ```
+  Where clipW is the fourth component of the clip-space position.
+
+### Current Issues
+
+There is currently inconsistency in how these coordinate systems are defined and
+converted between:
+
+- We've decided to standardize on world space coordinates in the range [0,0,0]
+  to [1,1,1] to simplify octree traversal and the relationships between
+  coordinate systems.
+- Previously, the octree was defined in various places with inconsistent bounds
+  (either [-0.5,-0.5,-0.5] to [0.5,0.5,0.5] or [0,0,0] to [1,1,1]).
+- The code needs to be updated to consistently use the [0,1] range throughout
+  all components.
+
+#### Implementation Plan
+
+To resolve these issues, we need to make the following changes:
+
+1. Update `Octree.ts` to document that the octree uses [0,0,0] to [1,1,1]
+   coordinates
+2. Modify `sampleColor` in `sampleSlice.ts` to check bounds against 0 and 1
+3. Update the octant traversal code in `sampleSlice.ts` to start at [0,0,0]
+   instead of [-0.5,-0.5,-0.5]
+4. Adjust the slice origin in `Renderer.tsx` to use a position that aligns with
+   the [0,1] coordinate system
+5. Ensure the shader code in `F_CAST_OCTREE_SLICE.glsl` correctly handles the
+   ray-plane intersection with this coordinate system
+
 ## Todo
 
 - [x] Render a sphere using ray casting

@@ -57,9 +57,17 @@ export function sampleSlice({
    * The voxels in a slice will be labeled 000 -> 888, where voxel "123" has
    * x=1, y=2, z=3
    */
-  const slice = new Int32Array(512)
+  const slice = new Uint32Array(512)
 
   const step = getStepLength(rayDirection, depth)
+
+  // DEBUG: Log octree traversal parameters
+  console.log("SampleSlice parameters:", {
+    depth,
+    step: [step.x, step.y, step.z],
+    sliceOrigin: [sliceOrigin.x, sliceOrigin.y, sliceOrigin.z],
+    octreeLength: octree.length,
+  })
 
   /**
    * Now we can add our 512 voxels to the slice. As we step through the x,y,z
@@ -72,6 +80,9 @@ export function sampleSlice({
    * index (000, 001, etc).
    */
   const nodeOrigin = Vec3.clone(sliceOrigin)
+
+  // Track non-zero values for debugging
+  let nonZeroValues = 0
 
   // We will iterate through 64 camera-aligned "cores" through the octree by
   // looping over x and y in pseudo-screens-space:
@@ -88,10 +99,21 @@ export function sampleSlice({
         // Find and store the voxel. See the documentation in Slice.ts for
         // details on how this node index is calculated.
         const nodeIndex = xIndex | (yIndex << 3) | (zIndex << 6)
-        slice[nodeIndex] = sampleColor(octree, nodeOrigin, depth)
+        const color = sampleColor(octree, nodeOrigin, depth)
+        slice[nodeIndex] = color
+
+        // Track non-zero values for debugging
+        if (color > 0) {
+          nonZeroValues++
+        }
       }
     }
   }
+
+  // DEBUG: Log the results
+  console.log(
+    `Generated slice with ${nonZeroValues} non-zero values at depth ${depth}`
+  )
 
   return slice
 }
@@ -128,16 +150,27 @@ function sampleColor(
   samplePoint: Vec3,
   targetDepth: number
 ): number {
-  if (samplePoint.x < 0 || samplePoint.x > 1) {
+  if (samplePoint.x < -0.5 || samplePoint.x > 0.5) {
     return 0
   }
 
-  if (samplePoint.y < 0 || samplePoint.y > 1) {
+  if (samplePoint.y < -0.5 || samplePoint.y > 0.5) {
     return 0
   }
 
-  if (samplePoint.z < 0 || samplePoint.z > 1) {
+  if (samplePoint.z < -0.5 || samplePoint.z > 0.5) {
     return 0
+  }
+
+  // DEBUG: Log sample points occasionally to see what coordinates we're trying to sample
+  const randomSample = Math.random() < 0.01 // Only log ~1% of samples to avoid console flood
+  if (randomSample) {
+    console.log(
+      "Sampling point:",
+      [samplePoint.x, samplePoint.y, samplePoint.z],
+      "at depth",
+      targetDepth
+    )
   }
 
   // We are always looking at an octant. The root octant is at index 0, so that's where we start.
@@ -147,6 +180,9 @@ function sampleColor(
   let octantX = 0
   let octantY = 0
   let octantZ = 0
+
+  // DEBUG: Track the traversal path
+  let traversalPath = [octantIndex]
 
   // Traverse down to the desired depth
   for (let currentDepth = 0; currentDepth < targetDepth; currentDepth++) {
@@ -178,9 +214,19 @@ function sampleColor(
     const nodeIndex = value >>> 8
     const isLeafNode = nodeIndex === 0
 
+    // DEBUG: Add this step to the traversal path
+    traversalPath.push(octantIndex + nearestNodeIndexWithinOctant)
+
     // If it's a leaf node (no children), no need to go any deeper, just return
     // its opacity.
     if (isLeafNode) {
+      // DEBUG log traversal for non-zero opacity nodes (occasionally)
+      if (opacity > 0 && Math.random() < 0.1) {
+        console.log(
+          `Found opacity ${opacity} at traversal path:`,
+          traversalPath
+        )
+      }
       return opacity
     }
 
@@ -198,7 +244,17 @@ function sampleColor(
   // If we make it through the loop, we're still on an octant that has children,
   // but we've reached the target depth. So we just extract the opacity for the
   // whole octant and return that.
-  return octree[octantIndex] & 0xff // Always return just the opacity component
+  const finalOpacity = octree[octantIndex] & 0xff
+
+  // DEBUG log traversal for non-zero opacity nodes (occasionally)
+  if (finalOpacity > 0 && Math.random() < 0.1) {
+    console.log(
+      `Found opacity ${finalOpacity} at traversal path:`,
+      traversalPath
+    )
+  }
+
+  return finalOpacity // Always return just the opacity component
 }
 
 /**

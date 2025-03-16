@@ -161,9 +161,16 @@ export const Renderer: React.FC = () => {
     // move some of this up into initialization. But for now this will get us
     // going.
     const rayDirection = new Vec3(0, 0, -1) // FIXME: This should be the camera's direction
-    const depth = 0
-    const sliceOrigin = new Vec3(-1, -1, 0)
+    const depth = 4
+    const sliceOrigin = new Vec3(-0.5, -0.5, 0.5)
     const uVoxelStep = getStepLength(rayDirection, depth)
+
+    console.log("Rendering with:", {
+      rayDirection: Array.from(rayDirection),
+      depth,
+      sliceOrigin: Array.from(sliceOrigin),
+      uVoxelStep: Array.from(uVoxelStep),
+    })
 
     // useProgram is similar to bindBuffer, since we can only have one program
     // going at a time we need to tell OpenGL which is up.
@@ -179,17 +186,22 @@ export const Renderer: React.FC = () => {
     )
     gl.uniform1f(gl.getUniformLocation(program, "uFOV"), CAMERA_FOV)
 
-    // Set the slice uniforms
+    // Initialize the slice
+    const sliceData = sampleSlice({
+      sliceOrigin,
+      depth,
+      rayDirection,
+      octree: BOTTOM_PLANE_OCTREE,
+    })
 
-    gl.uniform1uiv(
-      gl.getUniformLocation(program, "uSlice"),
-      sampleSlice({
-        sliceOrigin,
-        depth,
-        rayDirection,
-        octree: BOTTOM_PLANE_OCTREE,
-      })
+    // DEBUG: Check if we have any non-zero values in the slice
+    const nonZeroCount = Array.from(sliceData).filter((val) => val > 0).length
+    console.log(
+      `Slice has ${nonZeroCount} non-zero values out of ${sliceData.length}`
     )
+
+    // Set the uniforms for the slice and it's origin.
+    gl.uniform1uiv(gl.getUniformLocation(program, "uSlice"), sliceData)
     gl.uniform3f(
       gl.getUniformLocation(program, "uSliceOrigin"),
       sliceOrigin.x,
@@ -301,8 +313,8 @@ export const Renderer: React.FC = () => {
       1
     )
 
+    // Projection matrix camera setup
     const projectionMatrix = new Mat4()
-
     Mat4.multiply(projectionMatrix, translationMatrix, yRotationMatrix)
     Mat4.multiply(projectionMatrix, projectionMatrix, xRotationMatrix)
 

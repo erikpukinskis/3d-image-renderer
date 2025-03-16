@@ -4,13 +4,19 @@
  * single octree, we would need to break that down into regions that are
  * rendered separately.
  *
- * When we render the octree, we
+ * When we render the octree, we center it at 0,0,0 and scale it to 1x1x1 in
+ * world space. So the octree's bounds will run from -0.5 to 0.5 on all three
+ * axes.
+ *
+ * TODO(erik): The camera down the z-axis in the negative direction, but I'm not
+ * sure whether z=1 is the front or the back of the octree, when looking from
+ * the camera.
  *
  * An octree is stored as an array of 32-bit uints
  * (https://www.khronos.org/opengl/wiki/Data_Type_(GLSL)#Scalars)
  *
- * Each sequence of 8 array entries represents an octant. The values in the array
- * can represent leaf or branch nodes.
+ * Each sequence of 8 array entries represents an octant. The values in the
+ * array can represent leaf or branch nodes.
  *
  * A leaf node is simply going to be an 8-bit unsigned integer, 0-255,
  * representing the opacity of the voxel.
@@ -27,7 +33,8 @@
  *     const index = value >>> 8
  *
  * Validation:
- *  - A voxel can only point to an octant with an index greater than its own index.
+ *  - A voxel can only point to an octant with an index greater than its own
+ *    index.
  *
  * Example:
  *
