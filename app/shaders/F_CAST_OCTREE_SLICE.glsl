@@ -22,7 +22,12 @@ uniform vec3 uVoxelStep;
 uniform uint uSlice[512];
 
 /**
- * Camera projection matrix (world to clip space transform)
+ * View matrix (transforms from world space to camera space)
+ */
+uniform mat4 uView;
+
+/**
+ * Projection matrix (transforms from camera space to clip space)
  */
 uniform mat4 uProjection;
 
@@ -52,25 +57,17 @@ void mainImage(out vec4 outColor, vec2 fragCoord) {
   vec2 ndc = (uv * 2.0 - 1.0);
 
   /**
+   * The point on the near plane that's intersected by
+   * this pixel's ray. (clip space)
+   *
    * Clip space is the set of points on the near plane of the camera's view
-   * frustum. We're finding the point on the near plane that's intersected by
-   * this pixel's ray.
+   * frustum. We're finding t
    */
   vec4 clipPos = vec4(ndc, -1.0, 1);
 
   /**
-   * Transform from clip space to view space by applying the inverse projection
-   * (camera space.)
-   * 
-   * This is a bit tough to understand, but Claude gave a great
-   * analogy: Imagine you're in a dark room with a flashlight. The projection
-   * Matrix is like: "Where on the wall will my flashlight beam hit if I point
-   * it in this direction?" The Inverse Projection Matrix is like: "If I see a
-   * spot on the wall, which direction do I need to point my flashlight to hit
-   * that spot?"
-   *
-   * TODO(erik): We might want to move this out into JavaScript for performance
-   * reasons.
+   * The point on the near plane that's intersected by
+   * this pixel's ray (camera space)
    */
   vec4 viewPos = inverse(uProjection) * clipPos;
 
@@ -82,8 +79,10 @@ void mainImage(out vec4 outColor, vec2 fragCoord) {
   viewPos /= viewPos.w;
 
   /**
-   * Normalized ray direction (??? space)
+   * Normalized ray direction (camera space)
    *
+   * The ray origin is always 0,0,0 in camera space.
+   * 
    * Obtained by discarding the distance to the view position.
    */
   vec3 rayDirection = normalize(viewPos.xyz);
@@ -109,14 +108,18 @@ void mainImage(out vec4 outColor, vec2 fragCoord) {
   // require any searching.
 
   // First, we'll take the camera plane of the slice, and figure out where the
-  // ray intersects that. Call that the voxel origin. See "Ray-plane
-  // intersection test" in F_QUAD_RAY_CAST.glsl for details on how this works.
+  // ray intersects that. Call that the voxel origin. 
 
-  vec3 anyPointOnPlane = uSliceOrigin;
+  /**
+   * Convert slice origin from world space to camera space
+   */
+  vec4 sliceOriginCamera = uView * vec4(uSliceOrigin, 1.0);
+  
+  /**
+   * Ray-plane intersection calculation (all in camera space)
+   */
+  vec3 anyPointOnPlane = sliceOriginCamera.xyz;
   vec3 rayOrigin = vec3(0.0);
-
-  // The normal of the camera plane of the slice is always going to be the same
-  // as the rayDirection since the slice is camera aligned.
   vec3 normal = rayDirection;
   float denomenator = dot(rayDirection, normal);
 
@@ -124,21 +127,31 @@ void mainImage(out vec4 outColor, vec2 fragCoord) {
   // perpendicular to the camera plane.
   float t = dot(anyPointOnPlane - rayOrigin, normal) / denomenator;
  
-  // Note: We don't need to check for -t (intersection behind the camera) for
+  // Note: Also we don't need to check for -t (intersection behind the camera) for
   // the same reason.
+  
+  /**
+   * Point where the ray intersects the slice plane (camera space)
+   */
   vec3 voxelOrigin = t * rayDirection;
 
   // Next we calculate the offset from the slice origin to the voxel origin.
-  // Call that the voxel offset.
-  vec3 voxelOffset = voxelOrigin - uSliceOrigin;
+  // Call that the voxel offset (camera space)
+  vec3 voxelOffset = voxelOrigin - sliceOriginCamera.xyz;
+
+  /**
+   * Convert voxel step from world space to camera space
+   * Note: For rotation only, we don't include translation
+   */
+  vec3 voxelStepCamera = (uView * vec4(uVoxelStep, 0.0)).xyz;
 
   // Then divide that offset by the voxel step, and the integer form of that
   // should give us our index within the slice.
-  vec3 index = voxelOffset / uVoxelStep;
+  vec3 index = voxelOffset / voxelStepCamera;
 
-  // I don't think we have any guarantees that the ray even intersects the
-  // slice. In that case x and/or y will be out of bounds (outside the 8x8x8
-  // grid of the slice) so we just return black.
+  // We don't have any guarantees that the ray even intersects the slice. In
+  // that case x and/or y will be out of bounds (outside the 8x8x8 grid of the
+  // slice) so we just return black.
   // TODO(erik): Do we need to bounds check z here?
   if (index.x < 0.0 || index.x >= 8.0 || index.y < 0.0 || index.y >= 8.0)  {
     outColor = red; // Change to red to see where this happens

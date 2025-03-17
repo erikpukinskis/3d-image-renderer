@@ -18,7 +18,7 @@ const Y_ROTATION_SPEED = 3
 /**
  * The initial distance that the camera is set back (world space)
  */
-const CAMERA_DISTANCE = -6
+const CAMERA_DISTANCE = -2
 const CAMERA_FOV = 0.2
 
 /**
@@ -351,11 +351,52 @@ export const Renderer: React.FC = () => {
     )
 
     /**
-     * Projection matrix camera setup (world space)
+     * View matrix (world space to camera space)
+     *
+     * This transforms points from world space to camera space.
+     * In camera space, the camera is at the origin (0,0,0) looking down the negative z-axis.
      */
-    const projectionMatrix = new Mat4()
-    Mat4.multiply(projectionMatrix, translationMatrix, yRotationMatrix)
-    Mat4.multiply(projectionMatrix, projectionMatrix, xRotationMatrix)
+    const viewMatrix = new Mat4()
+    Mat4.multiply(viewMatrix, translationMatrix, yRotationMatrix)
+    Mat4.multiply(viewMatrix, viewMatrix, xRotationMatrix)
+
+    /**
+     * Projection matrix (camera to clip space)
+     *
+     * For now, we're using a simple perspective projection.
+     * In the future, we could use a perspective matrix with proper field of view,
+     * aspect ratio, and near/far planes.
+     *
+     * TODO(erik): Should we incorporate the FOV here instead of uFOV?
+     */
+    const projectionMatrix = new Mat4(
+      // Identity matrix
+      1,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      1
+    )
+    // Simple identity for now - our viewMatrix already includes the projection
+    // Later this would be a proper perspective matrix
+
+    // Set the view and projection matrices
+    gl.uniformMatrix4fv(
+      gl.getUniformLocation(program, "uView"),
+      false,
+      viewMatrix
+    )
 
     gl.uniformMatrix4fv(
       gl.getUniformLocation(program, "uProjection"),
